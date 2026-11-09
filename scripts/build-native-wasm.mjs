@@ -9,8 +9,14 @@ const output = join(root, "src", "wasm");
 await mkdir(output, { recursive: true });
 await new Promise((resolve, reject) => {
   const command = "docker buildx build";
-  const child = spawn("docker", ["buildx", "build", "--target", "artifacts", "--output", `type=local,dest=${output}`,
-    "-f", join(root, "build-wasm", "Dockerfile"), root], { stdio: "inherit", windowsHide: true });
+  const child = spawn("docker", [
+    "buildx", "build",
+    "--progress=plain",
+    "--target", "artifacts",
+    "--output", `type=local,dest=${output}`,
+    "-f", join(root, "build-wasm", "Dockerfile"),
+    root,
+  ], { stdio: "inherit", windowsHide: true });
   child.on("error", (error) => reject(new Error(`Could not start ${command}: ${error.message}`)));
   child.on("exit", (code, signal) => {
     if (code === 0) {

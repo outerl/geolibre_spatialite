@@ -55,9 +55,10 @@ RUN python3 /build/patch-geos-config.py /opt/wasm/bin/geos-config
 WORKDIR /build/libspatialite-${SPATIALITE_VER}
 # SpatiaLite 5.1.0 ships an old config.sub that rejects Emscripten; refresh the
 # canonical triplet helpers and check the requested host before configure runs.
-# Limit SUBDIRS to src to avoid building test binaries during library compilation.
+# Limit SUBDIRS to src to avoid building test binaries, and omit loadable module mod_spatialite.la.
 RUN cp /usr/share/misc/config.sub /usr/share/misc/config.guess . && \
     sed -i 's/^SUBDIRS = src test.*/SUBDIRS = src/' Makefile.in && \
+    sed -i 's/mod_spatialite.la//g' src/Makefile.in && \
     ./config.sub wasm32-unknown-emscripten && \
     emconfigure ./configure --host=wasm32-unknown-emscripten --prefix=/opt/wasm \
       --enable-shared=no --enable-static=yes --disable-rttopo --disable-freexl \
@@ -73,6 +74,7 @@ RUN cp /usr/share/misc/config.sub /usr/share/misc/config.guess . && \
 
 WORKDIR /build
 COPY build-wasm/spatialite_bridge.c /build/spatialite_bridge.c
+COPY build-wasm/post.js /build/post.js
 RUN emcc -O3 -I/opt/wasm/include -c spatialite_bridge.c -o spatialite_bridge.o && \
     em++ -O3 -fexceptions spatialite_bridge.o -L/opt/wasm/lib \
       -lspatialite -lgeos_c -lgeos -lproj -lsqlite3 -lworkerfs.js -lz \
@@ -80,8 +82,9 @@ RUN emcc -O3 -I/opt/wasm/include -c spatialite_bridge.c -o spatialite_bridge.o &
       -sINITIAL_MEMORY=67108864 -sSTACK_SIZE=5242880 -sMAXIMUM_MEMORY=2147483648 \
       -sMODULARIZE=1 -sEXPORT_ES6=1 -sSINGLE_FILE=1 -sENVIRONMENT=web,worker \
       -sDISABLE_EXCEPTION_CATCHING=0 -sFORCE_FILESYSTEM=1 \
+      --post-js /build/post.js \
       --embed-file /opt/wasm/share/proj/proj.db@/opt/wasm/share/proj/proj.db \
-      -sEXPORTED_RUNTIME_METHODS='["getValue","setValue","UTF8ToString","FS","WORKERFS","HEAPU8","stackSave","stackRestore","stackAlloc"]' \
+      -sEXPORTED_RUNTIME_METHODS='["getValue","setValue","UTF8ToString","FS","HEAPU8","stackSave","stackRestore","stackAlloc"]' \
       -sEXPORTED_FUNCTIONS='["_sqlite3_open","_sqlite3_open_v2","_sqlite3_close_v2","_sqlite3_prepare_v2","_sqlite3_step","_sqlite3_finalize","_sqlite3_reset","_sqlite3_clear_bindings","_sqlite3_stmt_readonly","_sqlite3_bind_parameter_count","_sqlite3_column_count","_sqlite3_column_type","_sqlite3_column_name","_sqlite3_column_text","_sqlite3_column_blob","_sqlite3_column_bytes","_sqlite3_column_double","_sqlite3_column_int64","_sqlite3_bind_null","_sqlite3_bind_text","_sqlite3_bind_blob","_sqlite3_bind_double","_sqlite3_bind_int64","_sqlite3_get_autocommit","_sqlite3_serialize","_sqlite3_free","_sqlite3_errmsg","_spatialite_wasm_init","_spatialite_wasm_cleanup","_spatialite_wasm_version","_spatialite_wasm_has_geos","_spatialite_wasm_has_proj","_malloc","_free"]' \
       -o /dist/spatialite.js && \
     cp /opt/wasm/share/proj/proj.db /dist/proj.db && \
