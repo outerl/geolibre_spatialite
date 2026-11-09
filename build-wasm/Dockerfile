@@ -49,17 +49,23 @@ RUN emcmake cmake -S . -B build \
       -DCMAKE_CXX_FLAGS="-O3 -fexceptions" \
       -DBUILD_DOCUMENTATION=OFF -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/opt/wasm && \
     cmake --build build -j$(nproc) && cmake --install build
+COPY build-wasm/patch-geos-config.py /build/patch-geos-config.py
+RUN python3 /build/patch-geos-config.py /opt/wasm/bin/geos-config
+
 WORKDIR /build/libspatialite-${SPATIALITE_VER}
 # SpatiaLite 5.1.0 ships an old config.sub that rejects Emscripten; refresh the
 # canonical triplet helpers and check the requested host before configure runs.
+# Limit SUBDIRS to src to avoid building test binaries during library compilation.
 RUN cp /usr/share/misc/config.sub /usr/share/misc/config.guess . && \
+    sed -i 's/^SUBDIRS = src test.*/SUBDIRS = src/' Makefile.in && \
     ./config.sub wasm32-unknown-emscripten && \
     emconfigure ./configure --host=wasm32-unknown-emscripten --prefix=/opt/wasm \
       --enable-shared=no --enable-static=yes --disable-rttopo --disable-freexl \
       --disable-libxml2 --disable-gcp --disable-minizip --disable-iconv \
+      --disable-examples --disable-dependency-tracking \
       --with-geosconfig=/opt/wasm/bin/geos-config \
       CPPFLAGS="-I/opt/wasm/include" \
-      CFLAGS="-O3 -I/opt/wasm/include -sDISABLE_EXCEPTION_CATCHING=0" \
+      CFLAGS="-O3 -I/opt/wasm/include -sDISABLE_EXCEPTION_CATCHING=0 -DGEOS_ADVANCED -DGEOS_370 -DGEOS_390 -DGEOS_3100 -DGEOS_3110" \
       CXXFLAGS="-O3 -fexceptions -I/opt/wasm/include" \
       LDFLAGS="-L/opt/wasm/lib -sDISABLE_EXCEPTION_CATCHING=0 -lgeos -lc++ -lc++abi -lsqlite3 -lz -lm" \
       LIBS="-lproj -lgeos_c -lgeos -lsqlite3 -lz -lc++ -lc++abi -lm" && \
