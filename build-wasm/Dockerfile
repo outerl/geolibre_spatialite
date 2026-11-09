@@ -5,6 +5,8 @@ FROM emscripten/emsdk:3.1.64 AS builder
 ENV SQLITE_VER=3460100 PROJ_VER=9.4.1 GEOS_VER=3.12.2 SPATIALITE_VER=5.1.0 ZLIB_VER=1.3.1
 ENV SOURCE_DATE_EPOCH=1726185600
 ENV PKG_CONFIG_LIBDIR=/opt/wasm/lib/pkgconfig
+ENV PKG_CONFIG_PATH=/opt/wasm/lib/pkgconfig
+ENV EM_PKG_CONFIG_PATH=/opt/wasm/lib/pkgconfig
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget autoconf automake autotools-dev libtool pkg-config bzip2 unzip ca-certificates sqlite3 \
     && rm -rf /var/lib/apt/lists/*
@@ -56,20 +58,31 @@ WORKDIR /build/libspatialite-${SPATIALITE_VER}
 # SpatiaLite 5.1.0 ships an old config.sub that rejects Emscripten; refresh the
 # canonical triplet helpers and check the requested host before configure runs.
 # Limit SUBDIRS to src to avoid building test binaries, and omit loadable module mod_spatialite.la.
+# Autoconf AC_CHECK_LIB / AC_SEARCH_LIBS probes compile dummy declarations (e.g. char inflateInit_();)
+# which wasm-ld rejects as function signature mismatches against the static libraries.
+# Pass cached probe results so configure detects zlib, PROJ, and GEOS without failing.
 RUN cp /usr/share/misc/config.sub /usr/share/misc/config.guess . && \
     sed -i 's/^SUBDIRS = src test.*/SUBDIRS = src/' Makefile.in && \
     sed -i 's/mod_spatialite.la//g' src/Makefile.in && \
     ./config.sub wasm32-unknown-emscripten && \
-    emconfigure ./configure --host=wasm32-unknown-emscripten --prefix=/opt/wasm \
-      --enable-shared=no --enable-static=yes --disable-rttopo --disable-freexl \
-      --disable-libxml2 --disable-gcp --disable-minizip --disable-iconv \
-      --disable-examples --disable-dependency-tracking \
-      --with-geosconfig=/opt/wasm/bin/geos-config \
-      CPPFLAGS="-I/opt/wasm/include" \
-      CFLAGS="-O3 -I/opt/wasm/include -sDISABLE_EXCEPTION_CATCHING=0 -DGEOS_ADVANCED -DGEOS_370 -DGEOS_390 -DGEOS_3100 -DGEOS_3110" \
-      CXXFLAGS="-O3 -fexceptions -I/opt/wasm/include" \
-      LDFLAGS="-L/opt/wasm/lib -sDISABLE_EXCEPTION_CATCHING=0 -lgeos -lc++ -lc++abi -lsqlite3 -lz -lm" \
-      LIBS="-lproj -lgeos_c -lgeos -lsqlite3 -lz -lc++ -lc++abi -lm" && \
+    (ac_cv_lib_z_inflateInit_=yes \
+     ac_cv_search_proj_normalize_for_visualization=-lproj \
+     ac_cv_search_GEOSCoveredBy=-lgeos_c \
+     ac_cv_search_GEOSDelaunayTriangulation=-lgeos_c \
+     ac_cv_search_GEOSContext_setErrorMessageHandler_r=-lgeos_c \
+     ac_cv_search_GEOSFrechetDistance_r=-lgeos_c \
+     ac_cv_search_GEOSConstrainedDelaunayTriangulation_r=-lgeos_c \
+     ac_cv_search_GEOSHilbertCode=-lgeos_c \
+     emconfigure ./configure --host=wasm32-unknown-emscripten --prefix=/opt/wasm \
+       --enable-shared=no --enable-static=yes --disable-rttopo --disable-freexl \
+       --disable-libxml2 --disable-gcp --disable-minizip --disable-iconv \
+       --disable-examples --disable-dependency-tracking \
+       --with-geosconfig=/opt/wasm/bin/geos-config \
+       CPPFLAGS="-I/opt/wasm/include" \
+       CFLAGS="-O3 -I/opt/wasm/include -sDISABLE_EXCEPTION_CATCHING=0 -DGEOS_ADVANCED -DGEOS_370 -DGEOS_390 -DGEOS_3100 -DGEOS_3110" \
+       CXXFLAGS="-O3 -fexceptions -I/opt/wasm/include" \
+       LDFLAGS="-L/opt/wasm/lib -sDISABLE_EXCEPTION_CATCHING=0" \
+       LIBS="-lsqlite3 -lz -lm" || (echo "=== configure failed, dumping config.log ===" && cat config.log && exit 1)) && \
     emmake make -j$(nproc) && emmake make install
 
 WORKDIR /build
