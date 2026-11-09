@@ -86,6 +86,22 @@ describe("WORKERFS read-only database adapter (SQLite test bridge)", () => {
     await expect(NativeCReadOnlyDatabase.open(bridge.mod, new TestDatabaseBlob(wal), 1)).rejects.toThrow("WAL mode");
     expect(bridge.workerFsMounts.size).toBe(0);
 
+    // Too small
+    await expect(NativeCReadOnlyDatabase.open(bridge.mod, new Blob(["short"]), 1)).rejects.toThrow("too small");
+
+    // Invalid signature
+    const badSig = new Uint8Array(100);
+    await expect(NativeCReadOnlyDatabase.open(bridge.mod, new Blob([badSig]), 1)).rejects.toThrow("not a SQLite database");
+
+    // Unsupported journal format
+    const badJournal = bytes.slice();
+    badJournal[18] = 3;
+    await expect(NativeCReadOnlyDatabase.open(bridge.mod, new TestDatabaseBlob(badJournal), 1)).rejects.toThrow("unsupported SQLite journal format");
+
+    // Missing capabilities
+    const modWithoutWorkerFs = { ...bridge.mod, WORKERFS: undefined };
+    await expect(NativeCReadOnlyDatabase.open(modWithoutWorkerFs, new TestDatabaseBlob(bytes), 1)).rejects.toThrow("does not support paged reads");
+
     vi.spyOn(bridge.mod, "_sqlite3_open_v2").mockImplementation((_path, output) => {
       bridge.mod.setValue(output, 0, "*");
       return 14;
@@ -93,5 +109,25 @@ describe("WORKERFS read-only database adapter (SQLite test bridge)", () => {
     await expect(NativeCReadOnlyDatabase.open(bridge.mod, new TestDatabaseBlob(bytes), 1)).rejects.toThrow("code 14");
     expect(bridge.workerFsMounts.size).toBe(0);
     expect(bridge.files.size).toBe(0);
+  });
+
+  it("validates batch sizes, tests hasMore, and allows idempotent close", async () => {
+    const connection = await NativeCReadOnlyDatabase.open(bridge.mod, new TestDatabaseBlob(bytes), 1);
+    try {
+      const cursor = connection.startQuery("SELECT id FROM records ORDER BY id");
+      expect(() => connection.readBatch(cursor.cursorId, 0)).toThrow("Invalid batch size");
+      expect(() => connection.readBatch(cursor.cursorId, 1, 0)).toThrow("Invalid batch byte limit");
+
+      expect(connection.hasMore(cursor.cursorId)).toBe(true);
+      expect(connection.hasMore(cursor.cursorId)).toBe(true); // already positioned
+      const batch = connection.readBatch(cursor.cursorId, 10);
+      expect(batch.rows).toHaveLength(3);
+      expect(batch.done).toBe(true);
+      expect(connection.hasMore(cursor.cursorId)).toBe(false);
+    } finally {
+      connection.close();
+      // Idempotent close
+      connection.close();
+    }
   });
 });

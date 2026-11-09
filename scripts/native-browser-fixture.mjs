@@ -14,6 +14,10 @@ function check(value, message) {
   if (!value) throw new Error(message);
 }
 
+function ids(collection) {
+  return collection.features.map((feature) => feature.properties?.id).sort((a, b) => a - b);
+}
+
 async function getService() {
   const packageMode = new URLSearchParams(location.search).has("package");
   if (packageMode) {
@@ -127,7 +131,6 @@ async function run() {
       check(JSON.stringify(ids(indexedBoundary)) === JSON.stringify(ids(scanBoundary)), "Indexed and scan bbox boundary results differ.");
       check(JSON.stringify(ids(indexedBoundary)) === JSON.stringify([9]), "Exact envelope post-filter did not remove the float-rounded near-boundary candidate.");
     } finally { await scan.close(); }
-    const ids = (collection) => collection.features.map((feature) => feature.properties?.id).sort((a, b) => a - b);
     check(JSON.stringify(ids(scanFeatures)) === JSON.stringify(ids(indexed)), "RTree and scan fallback results differ.");
 
     const early = paged.streamQuery("SELECT id FROM places ORDER BY id", [], { batchSize: 1 });

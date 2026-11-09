@@ -248,12 +248,23 @@ export class NativeCReadOnlyDatabase {
   close(): void {
     if (this.closed) return;
     for (const cursorId of this.cursors.keys()) this.closeCursor(cursorId);
-    const rc = this.mod._sqlite3_close_v2(this.dbPtr);
-    if (rc !== SQLITE_OK) throw sqliteError(this.mod, this.dbPtr, rc);
-    this.dbPtr = 0;
-    this.mod._spatialite_wasm_cleanup(this.cachePtr);
-    this.cachePtr = 0;
-    this.mod.FS.unmount?.(MOUNT_POINT);
-    this.closed = true;
+    let closeError: Error | null = null;
+    try {
+      if (this.dbPtr) {
+        const rc = this.mod._sqlite3_close_v2(this.dbPtr);
+        if (rc !== SQLITE_OK) closeError = sqliteError(this.mod, this.dbPtr, rc);
+      }
+    } catch (cause) {
+      closeError = cause instanceof Error ? cause : new Error(String(cause));
+    } finally {
+      this.dbPtr = 0;
+      if (this.cachePtr) {
+        try { this.mod._spatialite_wasm_cleanup(this.cachePtr); } catch { /* ignore cleanup error */ }
+        this.cachePtr = 0;
+      }
+      try { this.mod.FS.unmount?.(MOUNT_POINT); } catch { /* ignore unmount error */ }
+      this.closed = true;
+    }
+    if (closeError) throw closeError;
   }
 }

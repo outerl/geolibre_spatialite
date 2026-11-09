@@ -50,12 +50,23 @@ describe("GeoLibre SpatiaLite Plugin Lifecycle & UI", () => {
 
   it("exposes functional openDatabase on global service", async () => {
     const service = getSpatialiteService();
+    expect(service.version).toBeDefined();
+    expect(service.isReady()).toBe(true);
+    expect(service.getEngineType()).toBe("inlined-sqlite-wasm");
+    expect(service.getSpatialiteVersion()).toContain("inlined");
+    service.registerNativeSpatialiteFactory?.(null);
+
     const conn = await service.createDatabase();
     conn.exec("CREATE TABLE test (val INT);");
     conn.exec("INSERT INTO test VALUES (42);");
     const rows = conn.query<{ val: number }>("SELECT val FROM test;");
     expect(rows[0]?.val).toBe(42);
+    const exported = conn.export();
     conn.close();
+
+    const reopened = await service.openDatabase(exported);
+    expect(reopened.query<{ val: number }>("SELECT val FROM test;")[0]?.val).toBe(42);
+    reopened.close();
   });
 
   it("renders SpatialiteController and executes queries through UI", async () => {

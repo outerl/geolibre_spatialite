@@ -235,7 +235,9 @@ export class PagedSpatialiteConnection {
       }>(`SELECT f_table_name, f_geometry_column, ${quoteIdentifier(typeColumn)} AS geometry_type, coord_dimension, srid, spatial_index_enabled FROM geometry_columns`);
       return rows.map((row) => ({
         tableName: row.f_table_name, columnName: row.f_geometry_column, type: String(row.geometry_type),
-        coordDimension: typeof row.coord_dimension === "number" ? row.coord_dimension : row.coord_dimension.length,
+        coordDimension: typeof row.coord_dimension === "number"
+          ? row.coord_dimension
+          : (Number.isFinite(Number(row.coord_dimension)) ? Number(row.coord_dimension) : row.coord_dimension.length),
         srid: row.srid, spatialIndexEnabled: Boolean(row.spatial_index_enabled),
       }));
     }

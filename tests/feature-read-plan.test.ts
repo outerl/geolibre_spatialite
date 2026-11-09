@@ -59,6 +59,32 @@ describe("selective feature reads", () => {
         filters: [{ column: "id", operator: "LIKE", value: 1 }],
       } as never)).toThrow("LIKE");
       expect(() => db.getTableGeoJson("items", "geometry", undefined, {
+        filters: [{ column: "id", operator: "IS NULL", value: 1 } as never],
+      })).toThrow("IS NULL filters do not take a value");
+
+      // IS NULL and IS NOT NULL filters
+      db.exec("CREATE TABLE nullable (id INTEGER PRIMARY KEY, val TEXT, geometry BLOB)");
+      db.exec("INSERT INTO nullable VALUES (1, NULL, ?), (2, 'present', ?)", [encodeSpatialitePoint(0, 0), encodeSpatialitePoint(1, 1)]);
+      const nullRows = db.getTableGeoJson("nullable", "geometry", undefined, {
+        filters: [{ column: "val", operator: "IS NULL" }],
+      });
+      expect(nullRows.features).toHaveLength(1);
+      expect(nullRows.features[0]?.properties?.id).toBe(1);
+
+      const notNullRows = db.getTableGeoJson("nullable", "geometry", undefined, {
+        filters: [{ column: "val", operator: "IS NOT NULL" }],
+      });
+      expect(notNullRows.features).toHaveLength(1);
+      expect(notNullRows.features[0]?.properties?.id).toBe(2);
+
+      // GeometryCollection envelope
+      const collEnvelope = geometryEnvelope({
+        type: "GeometryCollection",
+        geometries: [{ type: "Point", coordinates: [1, 2] }, { type: "Point", coordinates: [5, 6] }],
+      });
+      expect(collEnvelope).toEqual([1, 2, 5, 6]);
+      expect(geometryEnvelope({ type: "GeometryCollection", geometries: [] })).toBeNull();
+      expect(() => db.getTableGeoJson("items", "geometry", undefined, {
         bbox: [0, 0, 1, 1], requireSpatialIndex: true,
       })).toThrow("valid SpatiaLite spatial index");
 
