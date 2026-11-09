@@ -276,7 +276,7 @@ export class SpatialiteDatabase {
           const key = cols[i];
           if (i === geomIndex || key === undefined) continue;
           const val = values[i];
-          const value = val instanceof Uint8Array ? `[BLOB ${val.length} bytes]` : val;
+          const value = val instanceof Uint8Array ? `[BLOB ${val.length} bytes]` : typeof val === "bigint" ? val.toString() : val;
           properties[key] = value;
         }
         yield { type: "Feature", geometry, properties };

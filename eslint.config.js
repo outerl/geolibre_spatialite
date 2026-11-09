@@ -9,6 +9,7 @@ export default tseslint.config(
       "dist/**",
       "geolibre-plugin/dist/**",
       "node_modules/**",
+      "src/wasm/**",
     ],
   },
   eslint.configs.recommended,

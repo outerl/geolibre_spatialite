@@ -1,72 +1,56 @@
 # GeoLibre SpatiaLite
 
-An offline GeoLibre plugin for opening SQLite/SpatiaLite files, exploring spatial tables, running SQL, and adding selected layers to the map.
+An offline GeoLibre plugin for opening SQLite/SpatiaLite files, running spatial SQL, and adding selected tables to the map.
 
-Version 0.1.0 uses SQLite WebAssembly (sql.js) with TypeScript implementations of a documented subset of SpatiaLite functions. It does not bundle C libspatialite or GEOS.
+Production builds bundle upstream **libspatialite 5.1.0**, **GEOS 3.12.2**, **PROJ 9.4.1**, and **SQLite 3.46.1**, compiled with Emscripten 3.1.64. The WebAssembly and PROJ database are embedded in the JavaScript module: the installed plugin makes no runtime requests for those resources.
 
-## Features
+## Build and validate
 
-- Open `.sqlite`, `.sqlite3`, `.db`, and `.spatialite` files and export an edited copy.
-- Inspect spatial metadata without loading feature tables. Only the table selected for **Add to Map** is converted.
-- Load all features by default, with progress and cancellation. Large layers use a streaming SQL cursor and periodically yield to the browser.
-- Read/write ordinary uncompressed 2D Point, LineString, Polygon, MultiPoint, MultiLineString, MultiPolygon, and GeometryCollection BLOBs and WKB.
-- Transform mapped coordinates to WGS84 using Proj4js and definitions from `spatial_ref_sys`; EPSG:3857 is also built in. Unknown projections produce an error.
-- Use the Spatial SQL console with a bounded 100-row preview, including CTEs and multiple statements.
-- Access the typed `window.geolibreSpatialite` service from another plugin. Optional host service registration uses the name `spatialite`.
-
-## Supported spatial SQL
-
-- `StartPoint`, `EndPoint`, `PointN`, `NumPoints`, `SetStartPoint`, `SetEndPoint`, and their `ST_` aliases.
-- `MakePoint` / `ST_Point`, `GeomFromWKB`, `GeomFromText`, `AsBinary`, `AsText`, `AsGeoJSON`, `X`, `Y`, and `SRID`, with corresponding `ST_` aliases.
-- `ST_Length` / `GLength`: one argument returns planar length in CRS units; a second ellipsoid flag requests metres for EPSG:4326.
-- `ST_Distance` / `Distance`: point-to-point distance in CRS units; a third ellipsoid flag requests metres for EPSG:4326.
-- `GeodesicLength`: WGS84 length in metres for EPSG:4326 lines.
-
-Constructors without an explicit SRID use SRID 0. Invalid or unsupported SQL geometry inputs return NULL. Mapping an unsupported non-NULL geometry fails explicitly instead of dropping it silently.
-
-## Version 0.1.0 limits
-
-- Compressed, TinyPoint, Z/M, empty WKT, GeoPackage geometry BLOBs, GEOS predicates/overlays, and the full SpatiaLite function catalogue are not supported.
-- SpatiaLite virtual-table modules, including `VirtualSpatialIndex` and `VirtualKNN`, are not linked. `CheckSpatialIndex()` reports 0. Opening does not replace real spatial indexes or modify database schemas.
-- `refreshSpatialIndex()` is an explicit compatibility helper for synthetic schemas without a real SpatialIndex. Its TEMP view supports exact BLOB equality for endpoint lookups, not bounding-box searches. It is never exported into the database.
-- SQLite triggers execute, but arbitrary AequilibraE/SpatiaLite editing is not guaranteed: native constraint/index triggers may require missing functions or modules. The trigger tests cover a small, synthetic schema. Validate the actual database's complete trigger set before integrating editing.
-- The file is still loaded into memory. Row streaming reduces conversion overhead; it is not a disk-backed or paged database engine. Very large databases or layers can exceed browser memory, and opening the SQLite file itself is synchronous. A single exceptionally large geometry can also delay cancellation.
-- `query()` executes a single statement; `exec()` accepts multiple unbound statements. Transactions must use synchronous callbacks. File export creates a downloadable copy; it does not overwrite the input file.
-
-See [performance measurements](docs/performance.md) and [inter-plugin integration](docs/inter-plugin-guide.md).
-
-## Install a local ZIP
+Node.js 22.18+ (22.x) or 24+, plus Docker with Buildx, are required to build from scratch:
 
 ```sh
 npm ci
+npm run build:wasm
 npm run check
 npm run package:geolibre
 npm run test:package
 ```
 
-In GeoLibre's plugin manager, choose the local ZIP at `geolibre-plugin/dist/geolibre-spatialite-0.1.0.zip`, then enable the plugin. The host must support right panels, toolbar menus, and GeoJSON layers. The package includes the runtime, styles, license notices, and corresponding source/build inputs.
+`build:wasm` exports the native runtime, build metadata, dependency licenses, and upstream source archives into `src/wasm/`. Alternatively, download the native artifact produced by CI into that directory. Generated artifacts are not committed.
 
-The package test extracts and validates the ZIP, checks entry CRCs and its SHA-256, then loads its JavaScript and WebAssembly and exercises the service with networking disabled. Host integration tests use a mock GeoLibre API; a manual installation check in the intended GeoLibre release remains necessary before publishing.
+Production library/plugin builds and packaging fail if those inputs are absent, incomplete, or fail their checksums. They cannot silently produce a sql.js-only release. CI builds and tests the native module before the platform test matrix and packaging jobs.
 
-This project has not established a plugin-store listing. See [release and submission notes](docs/geolibre-plugin-store-submission.md).
+For source development without Docker, `npm run check:source` runs lint, TypeScript, source regression tests, and development-server tests. These checks do not certify a native release. Source tests use the existing SQLite fallback and exercise the C adapter against real SQLite WASM; `npm run test:native` exercises the actual compiled SpatiaLite module after a production build.
 
-## Development
+## Features
 
-Use Node.js 22.18+ (22.x) or 24+. `npm run serve:geolibre` serves an already built plugin at `http://127.0.0.1:4174/plugin.json`.
+- Open `.sqlite`, `.sqlite3`, `.db`, and `.spatialite` files. Export an independent SQLite snapshot, including committed WAL changes.
+- Execute upstream SpatiaLite spatial SQL, GEOS operations, native spatial-index queries, and PROJ transformations using the embedded projection database. Optional RTTOPO, FreeXL, libxml2, minizip, GCP, and iconv support is disabled.
+- Inspect metadata without loading feature tables. Only **Add to Map** on a selected table converts its features.
+- Load all features with progress and cancellation. Cursor streaming avoids retaining an intermediate result table; callers can select only the attributes needed by the map.
+- Preserve signed 64-bit integers: safe integers are numbers, larger integers are bigint. Mapped attributes outside the safe range become decimal strings so GeoJSON stays serializable.
+- Run a bounded SQL-console preview, including CTEs and multiple statements; bind values for application queries and writes.
+- Use nested synchronous transactions and the typed `window.geolibreSpatialite` service from other plugins.
 
-- `npm run check`: lint, TypeScript, regression tests with coverage, development-server tests, and both builds.
-- `npm run package:geolibre`: deterministic ZIP and SHA-256 metadata.
-- `npm run test:package`: ZIP validation and offline runtime smoke test.
-- `npm run benchmark -- <database.sqlite> [table=links] [source-root] [async]`: read-only load benchmark. File I/O and map rendering are outside the timed conversion.
+## Install
 
-The core source is under `src/spatialite/`, the public API under `src/api/`, and the GeoLibre UI under `src/geolibre/`.
+In GeoLibre's plugin manager, choose `geolibre-plugin/dist/geolibre-spatialite-0.1.0.zip`, then enable the plugin. The host must support right panels, toolbar menus, and GeoJSON layers. The ZIP includes runtime code, styles, licenses, build inputs, and corresponding upstream source archives.
 
-## License & Upstream Compliance
+`npm run serve:geolibre` serves an already built plugin at `http://127.0.0.1:4174/plugin.json`.
 
-Licensed under the **GNU Lesser General Public License, Version 2.1 or later** (`LGPL-2.1-or-later`). See [LICENSE](LICENSE) for the full license text and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for complete upstream copyright and dependency notices.
+The package test validates archive structure, CRCs and SHA-256, then imports the actual packaged entry and exercises native SpatiaLite, GEOS, and PROJ with networking disabled. Installation in the intended GeoLibre Web/Desktop release remains a separate integration check. See [release notes](docs/geolibre-plugin-store-submission.md).
 
-- **Upstream SpatiaLite License Election**: Upstream SpatiaLite is tri-licensed (MPL 1.1 / GPL 2.0+ / LGPL 2.1+); `geolibre-spatialite` elects LGPL 2.1+.
-- **GPL Copyleft Isolation**: `librttopo` (GPL-2.0+) is strictly excluded (`--disable-rttopo`) to ensure no copyleft contamination affects the engine or consuming applications.
-- **Consumer Plugin Compatibility**: Downstream plugins (such as MIT-licensed AequilibraE) interface via runtime service dispatch (`window.geolibreSpatialite` or `app.getService('spatialite')`) as a "work that uses the Library" under LGPL 2.1 Section 6, preserving consumer plugins' independent licensing.
-- **Source Distribution**: Complete corresponding source code and build instructions are bundled in every release ZIP under `source/` to guarantee relinking and modification rights under LGPL 2.1.
+## Scope and limits
 
+- The map codec currently reads ordinary, uncompressed 2D Point, LineString, Polygon, MultiPoint, MultiLineString, MultiPolygon, and GeometryCollection BLOBs. Native spatial SQL supports additional encodings; adding such results directly to the map can still fail explicitly.
+- The entire database and final GeoJSON reside in memory. This is not a paged, disk-backed engine; very large files/layers can exceed browser memory. A single very large geometry can delay cancellation.
+- Export returns a standalone snapshot in rollback-journal format; it never overwrites the input. Finish transactions and prepared statements before exporting.
+- `query()` and parameterized writes accept one SQL statement. Unbound `exec()` accepts multiple statements. Transaction callbacks must be synchronous.
+- Native spatial-index/constraint triggers are available. The complete trigger suite of a particular AequilibraE project still needs application-level compatibility testing before claiming support for its editing workflows.
+- The earlier [performance figures](docs/performance.md) measured the previous sql.js-based implementation and are not native-runtime benchmarks.
+
+See [native build details](docs/c-wasm-compilation.md) and [inter-plugin integration](docs/inter-plugin-guide.md).
+
+## License
+
+LGPL-2.1-or-later; see [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The native build excludes RTTOPO. Release ZIPs contain dependency notices and corresponding source archives under `sources/`, plus plugin sources and build inputs under `source/`.

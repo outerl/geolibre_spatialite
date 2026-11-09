@@ -4,3 +4,4 @@ geolibre-plugin/dist/
 coverage/
 *.log
 .DS_Store
+src/wasm/

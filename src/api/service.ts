@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Outer Loop Consulting
 
 import { SpatialiteDatabase } from "../spatialite/database.js";
-import { getActiveEngineType, registerNativeSpatialiteFactory as registerFactory } from "../spatialite/sqlite-engine.js";
+import { getActiveEngineType, getLoadedSpatialiteVersion, registerNativeSpatialiteFactory as registerFactory } from "../spatialite/sqlite-engine.js";
 import type { GeoLibreSpatialiteService, ISpatialiteConnection, SpatialiteEngineType } from "./types.js";
 import type { SpatialiteWasmModule } from "../spatialite/c-wasm-adapter.js";
 import { PLUGIN_VERSION } from "../version.js";
@@ -19,11 +19,11 @@ class SpatialiteServiceImpl implements GeoLibreSpatialiteService {
   }
 
   getSpatialiteVersion(): string {
-    return getActiveEngineType() === "native-c-wasm" ? "5.1.0" : `${PLUGIN_VERSION} (inlined)`;
+    return getActiveEngineType() === "native-c-wasm" ? getLoadedSpatialiteVersion() : `${PLUGIN_VERSION} (inlined)`;
   }
 
-  registerNativeSpatialiteFactory(factory: () => Promise<unknown>): void {
-    registerFactory(factory as unknown as () => Promise<SpatialiteWasmModule>);
+  registerNativeSpatialiteFactory(factory: (() => Promise<SpatialiteWasmModule>) | null): void {
+    registerFactory(factory);
   }
 
   async openDatabase(data?: Uint8Array | ArrayBuffer): Promise<ISpatialiteConnection> {

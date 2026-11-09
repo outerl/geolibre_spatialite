@@ -17,7 +17,7 @@
     "build:geolibre": "vite build --config vite.geolibre.config.ts --configLoader runner",
     "build:library": "vite build --configLoader runner",
     "build:types": "tsc -p tsconfig.build.json",
-    "check": "npm run lint && npm run typecheck && npm test && npm run test:scripts && npm run build",
+    "check": "npm run check:source && npm run build && npm run test:native",
     "lint": "eslint . --max-warnings 0",
     "package:geolibre": "npm run build:geolibre && node scripts/package-geolibre-plugin.mjs",
     "test:package": "node scripts/test-geolibre-package.mjs",
@@ -25,7 +25,10 @@
     "test": "vitest run --coverage --configLoader runner",
     "typecheck": "tsc --noEmit",
     "test:scripts": "node --test scripts/*.test.mjs",
-    "benchmark": "node --expose-gc --max-old-space-size=4096 scripts/benchmark.mjs"
+    "benchmark": "node --expose-gc --max-old-space-size=4096 scripts/benchmark.mjs",
+    "build:wasm": "node scripts/build-native-wasm.mjs",
+    "test:native": "node scripts/test-native-runtime.mjs",
+    "check:source": "npm run lint && npm run typecheck && npm test && npm run test:scripts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

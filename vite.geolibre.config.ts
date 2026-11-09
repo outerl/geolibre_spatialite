@@ -3,10 +3,11 @@ import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
 import { inlineSqlWasmPlugin } from "./build/inline-sql-wasm-plugin.ts";
+import { nativeSpatialitePlugin } from "./build/native-spatialite-plugin.ts";
 
 export default defineConfig({
   publicDir: false,
-  plugins: [inlineSqlWasmPlugin()],
+  plugins: [inlineSqlWasmPlugin(), nativeSpatialitePlugin()],
   build: {
     target: "es2022",
     lib: {

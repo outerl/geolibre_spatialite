@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
   pull_request:
     branches:
       - main
@@ -16,7 +18,12 @@ permissions:
   contents: read
 
 jobs:
+  native:
+    name: Build and verify native runtime
+    uses: ./.github/workflows/build-wasm.yml
+
   test:
+    needs: native
     name: Test (${{ matrix.os }} / Node ${{ matrix.node-version }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -43,6 +50,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Download tested native runtime and corresponding sources
+        uses: actions/download-artifact@v4
+        with:
+          name: spatialite-native-${{ github.sha }}
+          path: src/wasm
+
       - name: Run linter
         run: npm run lint
 
@@ -57,6 +70,9 @@ jobs:
 
       - name: Build library and plugin bundles
         run: npm run build
+
+      - name: Test compiled native engine
+        run: npm run test:native
 
   package:
     name: Package & Verify (${{ matrix.os }})
@@ -81,6 +97,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Download tested native runtime and corresponding sources
+        uses: actions/download-artifact@v4
+        with:
+          name: spatialite-native-${{ github.sha }}
+          path: src/wasm
 
       - name: Build installable plugin archive
         run: npm run package:geolibre

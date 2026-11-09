@@ -213,5 +213,11 @@ Full dependency license files are bundled into every released plugin package und
 - `licenses/proj4.txt`
 - `licenses/mgrs.txt`
 - `licenses/wkt-parser.txt`
+- `licenses/libspatialite.txt`
+- `licenses/geos.txt`
+- `licenses/proj.txt`
+- `licenses/zlib.txt`
 
-The exact installed package versions are captured in `DEPENDENCIES.json` inside the distribution artifact. Source code is bundled under `source/` in accordance with LGPL 2.1 Section 6.
+The exact installed package and native component versions are captured in `DEPENDENCIES.json`. `NATIVE_BUILD_INFO.json` records the native artifacts and their hashes. Plugin source/build inputs are under `source/`; corresponding upstream native source archives are under `sources/` and `source/src/wasm/sources/`. Rebuild the C runtime with `npm run build:wasm` (Docker/Buildx required), then run `npm run check` and package the result. A plain JavaScript rebuild reuses the included native artifacts.
+
+The native build also links zlib 1.3.1 (Jean-loup Gailly, Mark Adler, and contributors), under the zlib license. Its original license text is included in `licenses/zlib.txt` and its complete source archive is included with the native sources.

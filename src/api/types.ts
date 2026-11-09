@@ -2,6 +2,7 @@
 // Copyright (c) 2026 Outer Loop Consulting
 
 import type { SpatialiteDatabase, SqlValue, SqlRow } from "../spatialite/database.js";
+import type { SpatialiteWasmModule } from "../spatialite/c-wasm-adapter.js";
 export type { GeoJsonReadOptions } from "../spatialite/database.js";
 export type DatabaseScalar = SqlValue;
 export type DatabaseRow = SqlRow;
@@ -29,7 +30,7 @@ export interface GeoLibreSpatialiteService {
   getSpatialiteVersion(): string;
   openDatabase(data?: Uint8Array | ArrayBuffer): Promise<ISpatialiteConnection>;
   createDatabase(): Promise<ISpatialiteConnection>;
-  registerNativeSpatialiteFactory?(factory: () => Promise<unknown>): void;
+  registerNativeSpatialiteFactory?(factory: (() => Promise<SpatialiteWasmModule>) | null): void;
 }
 
 declare global {

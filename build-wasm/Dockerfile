@@ -1,122 +1,85 @@
+# syntax=docker/dockerfile:1
 # SPDX-License-Identifier: LGPL-2.1-or-later
 # Copyright (c) 2026 Outer Loop Consulting
-#
-# Dockerfile for compiling true upstream C SpatiaLite, GEOS, PROJ, and SQLite
-# into an optimized WebAssembly module using the Emscripten SDK.
-
 FROM emscripten/emsdk:3.1.64 AS builder
-
-WORKDIR /build
-
-# Upstream pinned release versions
-ENV SQLITE_VER=3460100
-ENV PROJ_VER=9.4.1
-ENV GEOS_VER=3.12.2
-ENV SPATIALITE_VER=5.1.0
-
-# Install build dependencies
+ENV SQLITE_VER=3460100 PROJ_VER=9.4.1 GEOS_VER=3.12.2 SPATIALITE_VER=5.1.0 ZLIB_VER=1.3.1
+ENV SOURCE_DATE_EPOCH=1726185600
+ENV PKG_CONFIG_LIBDIR=/opt/wasm/lib/pkgconfig
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget \
-    autoconf \
-    automake \
-    libtool \
-    pkg-config \
-    bzip2 \
-    unzip \
-    ca-certificates \
+    wget autoconf automake libtool pkg-config bzip2 unzip ca-certificates sqlite3 \
     && rm -rf /var/lib/apt/lists/*
+WORKDIR /build
+RUN --mount=type=bind,source=.,target=/context \
+    mkdir -p /dist/sources /dist/licenses /opt/wasm/lib/pkgconfig /opt/wasm/include && \
+    if [ -d /context/src/wasm/sources ]; then cp -a /context/src/wasm/sources/. .; fi && \
+    (test -s sqlite-amalgamation-${SQLITE_VER}.zip || wget -q https://www.sqlite.org/2024/sqlite-amalgamation-${SQLITE_VER}.zip) && \
+    (test -s proj-${PROJ_VER}.tar.gz || wget -q https://download.osgeo.org/proj/proj-${PROJ_VER}.tar.gz) && \
+    (test -s geos-${GEOS_VER}.tar.bz2 || wget -q https://download.osgeo.org/geos/geos-${GEOS_VER}.tar.bz2) && \
+    (test -s libspatialite-${SPATIALITE_VER}.tar.gz || wget -q https://www.gaia-gis.it/gaia-sins/libspatialite-sources/libspatialite-${SPATIALITE_VER}.tar.gz) && \
+    (test -s zlib-${ZLIB_VER}.tar.gz || wget -q https://zlib.net/fossils/zlib-${ZLIB_VER}.tar.gz) && \
+    cp *.zip *.tar.gz *.tar.bz2 /dist/sources/ && \
+    unzip -q sqlite-amalgamation-${SQLITE_VER}.zip && \
+    tar -xzf proj-${PROJ_VER}.tar.gz && tar -xjf geos-${GEOS_VER}.tar.bz2 && \
+    tar -xzf libspatialite-${SPATIALITE_VER}.tar.gz && tar -xzf zlib-${ZLIB_VER}.tar.gz
 
-# 1. Download upstream source distributions
-RUN echo "Downloading SQLite 3.46.1 amalgamation..." && \
-    wget -q https://www.sqlite.org/2024/sqlite-amalgamation-${SQLITE_VER}.zip && \
-    unzip -q sqlite-amalgamation-${SQLITE_VER}.zip
-
-RUN echo "Downloading PROJ ${PROJ_VER}..." && \
-    wget -q https://download.osgeo.org/proj/proj-${PROJ_VER}.tar.gz && \
-    tar -xzf proj-${PROJ_VER}.tar.gz
-
-RUN echo "Downloading GEOS ${GEOS_VER}..." && \
-    wget -q https://download.osgeo.org/geos/geos-${GEOS_VER}.tar.bz2 && \
-    tar -xjf geos-${GEOS_VER}.tar.bz2
-
-RUN echo "Downloading SpatiaLite ${SPATIALITE_VER}..." && \
-    wget -q https://www.gaia-gis.it/gaia-sins/libspatialite-sources/libspatialite-${SPATIALITE_VER}.tar.gz && \
-    tar -xzf libspatialite-${SPATIALITE_VER}.tar.gz
-
-# 2. Build PROJ static library with Emscripten
+# Build target SQLite BEFORE PROJ/SpatiaLite. /usr/bin/sqlite3 is the host tool
+# that generates proj.db; it must never be used as the target SQLite library.
+RUN emcc -O3 -DSQLITE_THREADSAFE=0 -DSQLITE_ENABLE_RTREE=1 \
+      -DSQLITE_ENABLE_COLUMN_METADATA=1 -DSQLITE_ENABLE_FTS5=1 \
+      -c sqlite-amalgamation-${SQLITE_VER}/sqlite3.c -o sqlite3.o && \
+    emar rcs /opt/wasm/lib/libsqlite3.a sqlite3.o && \
+    cp sqlite-amalgamation-${SQLITE_VER}/sqlite3.h sqlite-amalgamation-${SQLITE_VER}/sqlite3ext.h /opt/wasm/include/ && \
+    printf '%s\n' 'prefix=/opt/wasm' 'libdir=${prefix}/lib' 'includedir=${prefix}/include' \
+      'Name: SQLite' 'Description: Target SQLite for WebAssembly' 'Version: 3.46.1' \
+      'Libs: -L${libdir} -lsqlite3 -lm' 'Cflags: -I${includedir}' > /opt/wasm/lib/pkgconfig/sqlite3.pc
+WORKDIR /build/zlib-${ZLIB_VER}
+RUN emconfigure ./configure --static --prefix=/opt/wasm && \
+    emmake make -j$(nproc) && emmake make install
 WORKDIR /build/proj-${PROJ_VER}
-RUN mkdir build && cd build && \
-    emcmake cmake .. \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DBUILD_SHARED_LIBS=OFF \
-      -DENABLE_TIFF=OFF \
-      -DENABLE_CURL=OFF \
-      -DBUILD_PROJSYNC=OFF \
-      -DBUILD_APPS=OFF \
-      -DBUILD_TESTING=OFF \
-      -DCMAKE_INSTALL_PREFIX=/opt/wasm && \
-    emmake make -j$(nproc) && \
-    emmake make install
-
-# 3. Build GEOS static library with Emscripten
+RUN emcmake cmake -S . -B build \
+      -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
+      -DCMAKE_CXX_FLAGS="-O3 -fexceptions" \
+      -DENABLE_TIFF=OFF -DENABLE_CURL=OFF -DBUILD_APPS=OFF -DBUILD_TESTING=OFF \
+      -DSQLite3_INCLUDE_DIR=/opt/wasm/include -DSQLite3_LIBRARY=/opt/wasm/lib/libsqlite3.a \
+      -DEXE_SQLITE3=/usr/bin/sqlite3 -DCMAKE_INSTALL_PREFIX=/opt/wasm && \
+    cmake --build build -j$(nproc) && cmake --install build
 WORKDIR /build/geos-${GEOS_VER}
-RUN mkdir build && cd build && \
-    emcmake cmake .. \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DBUILD_SHARED_LIBS=OFF \
-      -DBUILD_DOCUMENTATION=OFF \
-      -DBUILD_TESTING=OFF \
-      -DCMAKE_INSTALL_PREFIX=/opt/wasm && \
-    emmake make -j$(nproc) && \
-    emmake make install
-
-# 4. Build SpatiaLite static library with Emscripten
-# Note: --disable-rttopo is mandatory to maintain LGPL-2.1 licensing.
+RUN emcmake cmake -S . -B build \
+      -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
+      -DCMAKE_CXX_FLAGS="-O3 -fexceptions" \
+      -DBUILD_DOCUMENTATION=OFF -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/opt/wasm && \
+    cmake --build build -j$(nproc) && cmake --install build
 WORKDIR /build/libspatialite-${SPATIALITE_VER}
-RUN emconfigure ./configure \
-      --host=wasm32-unknown-emscripten \
-      --prefix=/opt/wasm \
-      --enable-shared=no \
-      --enable-static=yes \
-      --disable-rttopo \
-      --disable-freexl \
-      --disable-libxml2 \
-      --disable-gcp \
-      --disable-minizip \
-      CFLAGS="-O3 -I/opt/wasm/include" \
-      CXXFLAGS="-O3 -I/opt/wasm/include" \
-      LDFLAGS="-L/opt/wasm/lib" && \
-    emmake make -j$(nproc) && \
-    emmake make install
+RUN emconfigure ./configure --host=wasm32-unknown-emscripten --prefix=/opt/wasm \
+      --enable-shared=no --enable-static=yes --disable-rttopo --disable-freexl \
+      --disable-libxml2 --disable-gcp --disable-minizip --disable-iconv \
+      --with-geosconfig=/opt/wasm/bin/geos-config \
+      CFLAGS="-O3 -I/opt/wasm/include -sDISABLE_EXCEPTION_CATCHING=0" \
+      CXXFLAGS="-O3 -fexceptions -I/opt/wasm/include" \
+      LDFLAGS="-L/opt/wasm/lib -sDISABLE_EXCEPTION_CATCHING=0 -lgeos -lc++ -lc++abi -lsqlite3 -lz -lm" \
+      LIBS="-lproj -lgeos_c -lgeos -lsqlite3 -lz -lc++ -lc++abi -lm" && \
+    emmake make -j$(nproc) && emmake make install
 
-# 5. Compile the unified WebAssembly module
 WORKDIR /build
 COPY build-wasm/spatialite_bridge.c /build/spatialite_bridge.c
-
-RUN mkdir -p /dist && \
-    emcc -O3 -flto \
-      /build/sqlite-amalgamation-${SQLITE_VER}/sqlite3.c \
-      /build/spatialite_bridge.c \
-      -I/opt/wasm/include \
-      -I/build/sqlite-amalgamation-${SQLITE_VER} \
-      -L/opt/wasm/lib \
-      -lspatialite -lgeos_c -lgeos -lproj \
-      -DSQLITE_ENABLE_RTREE=1 \
-      -DSQLITE_ENABLE_COLUMN_METADATA=1 \
-      -DSQLITE_ENABLE_FTS5=1 \
-      -DSQLITE_ENABLE_JSON1=1 \
-      -DSQLITE_THREADSAFE=0 \
-      -s WASM=1 \
-      -s ALLOW_MEMORY_GROWTH=1 \
-      -s MODULARIZE=1 \
-      -s EXPORT_ES6=1 \
-      -s EXPORT_NAME=createSpatialiteModule \
-      -s FORCE_FILESYSTEM=1 \
-      -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap","getValue","setValue","UTF8ToString","stringToUTF8","FS","stackSave","stackRestore","stackAlloc","allocateUTF8"]' \
-      -s EXPORTED_FUNCTIONS='["_sqlite3_open","_sqlite3_close_v2","_sqlite3_exec","_sqlite3_prepare_v2","_sqlite3_step","_sqlite3_finalize","_sqlite3_reset","_sqlite3_column_count","_sqlite3_column_type","_sqlite3_column_name","_sqlite3_column_text","_sqlite3_column_blob","_sqlite3_column_bytes","_sqlite3_column_double","_sqlite3_column_int64","_sqlite3_bind_null","_sqlite3_bind_text","_sqlite3_bind_blob","_sqlite3_bind_double","_sqlite3_bind_int64","_sqlite3_errmsg","_sqlite3_changes","_sqlite3_total_changes","_spatialite_wasm_init","_spatialite_wasm_cleanup","_spatialite_wasm_version","_spatialite_wasm_target_cpu","_spatialite_wasm_has_geos","_spatialite_wasm_has_proj","_spatialite_wasm_malloc","_spatialite_wasm_free","_malloc","_free"]' \
-      -o /dist/spatialite.js
-
-# Target image containing only the output artifacts
+RUN emcc -O3 -I/opt/wasm/include -c spatialite_bridge.c -o spatialite_bridge.o && \
+    em++ -O3 -fexceptions spatialite_bridge.o -L/opt/wasm/lib \
+      -lspatialite -lgeos_c -lgeos -lproj -lsqlite3 -lz \
+      --no-entry -sWASM_BIGINT=1 -sALLOW_MEMORY_GROWTH=1 \
+      -sINITIAL_MEMORY=67108864 -sSTACK_SIZE=5242880 -sMAXIMUM_MEMORY=2147483648 \
+      -sMODULARIZE=1 -sEXPORT_ES6=1 -sSINGLE_FILE=1 -sENVIRONMENT=web,worker \
+      -sDISABLE_EXCEPTION_CATCHING=0 -sFORCE_FILESYSTEM=1 \
+      --embed-file /opt/wasm/share/proj/proj.db@/opt/wasm/share/proj/proj.db \
+      -sEXPORTED_RUNTIME_METHODS='["getValue","setValue","UTF8ToString","FS","HEAPU8","stackSave","stackRestore","stackAlloc"]' \
+      -sEXPORTED_FUNCTIONS='["_sqlite3_open","_sqlite3_close_v2","_sqlite3_prepare_v2","_sqlite3_step","_sqlite3_finalize","_sqlite3_reset","_sqlite3_clear_bindings","_sqlite3_bind_parameter_count","_sqlite3_column_count","_sqlite3_column_type","_sqlite3_column_name","_sqlite3_column_text","_sqlite3_column_blob","_sqlite3_column_bytes","_sqlite3_column_double","_sqlite3_column_int64","_sqlite3_bind_null","_sqlite3_bind_text","_sqlite3_bind_blob","_sqlite3_bind_double","_sqlite3_bind_int64","_sqlite3_get_autocommit","_sqlite3_serialize","_sqlite3_free","_sqlite3_errmsg","_spatialite_wasm_init","_spatialite_wasm_cleanup","_spatialite_wasm_version","_spatialite_wasm_has_geos","_spatialite_wasm_has_proj","_malloc","_free"]' \
+      -o /dist/spatialite.js && \
+    cp /opt/wasm/share/proj/proj.db /dist/proj.db && \
+    cp libspatialite-${SPATIALITE_VER}/COPYING /dist/licenses/libspatialite.txt && \
+    cp geos-${GEOS_VER}/COPYING /dist/licenses/geos.txt && \
+    cp proj-${PROJ_VER}/COPYING /dist/licenses/proj.txt && \
+    cp zlib-${ZLIB_VER}/LICENSE /dist/licenses/zlib.txt
+COPY build-wasm/write-build-info.py /build/write-build-info.py
+RUN python3 write-build-info.py /dist
+# Export the contents at the root, not under a second dist/ directory.
 FROM scratch AS artifacts
-COPY --from=builder /dist/spatialite.js /dist/spatialite.js
-COPY --from=builder /dist/spatialite.wasm /dist/spatialite.wasm
+COPY --from=builder /dist/ /

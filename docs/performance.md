@@ -1,5 +1,7 @@
 # Large database performance
 
+These are historical measurements of the sql.js-based engine before the native SpatiaLite migration. They do not establish performance for the current C runtime. Repeat the benchmark with the compiled native artifacts before publishing native performance figures.
+
 Measured on 2026-11-09 using a local transport-network database: 479,125,504 bytes (456.93 MiB), 451,535 link features. The database was read without changing its file. All columns and every feature were loaded in both versions; the baseline's limit was explicitly raised to avoid comparing against its old 10,000-row default.
 
 Medians of three separate Node.js 24.20.0 processes per configuration on the same Windows machine, using the same installed dependencies:

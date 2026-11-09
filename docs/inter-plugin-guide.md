@@ -1,6 +1,6 @@
 # Inter-plugin integration
 
-The plugin exposes a SQLite connection with a subset of spatial SQL, not the full C SpatiaLite engine. Read the compatibility limits in the README before using a database with native SpatiaLite constraint/index triggers. Existing AequilibraE project editing has not been certified by the synthetic trigger tests.
+Production builds expose upstream C SpatiaLite with GEOS, PROJ, and native spatial-index/constraint triggers. Read the map-codec and memory limits in the README. Existing AequilibraE project editing still requires validation against that project's complete trigger set.
 
 ## Open and query
 
@@ -20,6 +20,8 @@ try {
 
 The plugin dispatches `geolibre:spatialite:ready` after successful activation. `isReady()` indicates that the API is available; the WASM runtime initializes on the first open. The host service registry is optional. Disabling the plugin removes its global service registration and closes its panel-owned connection. Connections explicitly opened by consumers belong to those consumers and must be closed by them.
 
+`getEngineType()` reports `native-c-wasm` in production. `getSpatialiteVersion()` reports the loaded upstream version after the first successful open, or `not initialized` before loading. A failed initialization can be retried; it does not silently switch engines.
+
 ## Parameterized writes and transactions
 
 ```ts
@@ -36,6 +38,8 @@ db.close();
 
 Use bound parameters for values. Quote dynamic identifiers by doubling embedded double quotes and surrounding the name with double quotes. Do not interpolate user-entered values into SQL. Nested synchronous transactions use SQLite savepoints. Returning a Promise is rejected; never use an async transaction callback.
 
+Use bigint for integers outside JavaScript's safe range. Native queries return such values as bigint, while map attributes use decimal strings. Finish prepared statements and transactions before exporting. Export serializes the live database through SQLite, including committed WAL pages, and returns a standalone file in rollback-journal format.
+
 ## Load only a selected spatial table
 
 ```ts
@@ -50,7 +54,7 @@ const layer = await db.getTableGeoJsonAsync("places", "geometry", undefined, {
 
 There is no default feature limit. Pass a positive integer as the third argument to request a subset (0 returns no rows). Both the synchronous `getTableGeoJson()` and the asynchronous variant return WGS84 GeoJSON, resolving projected SRIDs through `spatial_ref_sys.proj4text` or built-in Proj4js definitions. Unknown SRIDs and unsupported BLOB encodings throw an error. Non-spatial BLOB attributes become descriptive strings.
 
-An active asynchronous cursor blocks wrapper SQL, writes, export, and close operations until it finishes or cancellation settles. Do not bypass that guard through `rawDb`. Progress callbacks should update UI or request cancellation, not query the connection. Schema metadata is cached by SQLite schema version; call `refreshSpatialIndex()` if changing geometry metadata through the low-level handle. That helper only creates a temporary exact-equality endpoint view in schemas that do not already contain a SpatialIndex; it does not implement the native spatial index.
+An active asynchronous cursor blocks wrapper SQL, writes, export, and close operations until it finishes or cancellation settles. Do not bypass that guard through `rawDb`. Progress callbacks should update UI or request cancellation, not query the connection. Schema metadata is cached by SQLite schema version; call `refreshSpatialIndex()` if changing geometry metadata through the low-level handle. Native spatial indexes are managed by SpatiaLite. The old exact-equality TEMP view is only a compatibility helper for the source-test fallback and is never installed over a native index.
 
 The entire SQLite file and the resulting GeoJSON still reside in memory. For wide tables, request only the properties needed by the map.
 

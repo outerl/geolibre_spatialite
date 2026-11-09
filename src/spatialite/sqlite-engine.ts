@@ -3,6 +3,7 @@
 
 import initSqlJs, { type Database, type SqlJsStatic } from "sql.js";
 import sqlWasmBase64 from "virtual:sql-wasm-base64";
+import bundledNativeFactory from "virtual:spatialite-native";
 
 import { registerSpatialFunctions } from "./spatial-functions.js";
 import {
@@ -14,8 +15,9 @@ import {
 } from "./c-wasm-adapter.js";
 
 let sqlJsPromise: Promise<SqlJsStatic> | null = null;
-let nativeWasmFactory: (() => Promise<SpatialiteWasmModule>) | null = null;
+let nativeWasmFactory: (() => Promise<SpatialiteWasmModule>) | null = bundledNativeFactory;
 let nativeWasmModulePromise: Promise<SpatialiteWasmModule> | null = null;
+let loadedNativeModule: SpatialiteWasmModule | null = null;
 
 function decodeInlineWasm(base64: string): ArrayBuffer {
   const binary = atob(base64);
@@ -38,9 +40,26 @@ export function loadSqliteWasm(): Promise<SqlJsStatic> {
  * Registers an Emscripten module factory for true native C SpatiaLite WebAssembly.
  * When registered, newly opened databases use native C libspatialite (GEOS, PROJ, VirtualSpatialIndex).
  */
-export function registerNativeSpatialiteFactory(factory: () => Promise<SpatialiteWasmModule>): void {
+export function registerNativeSpatialiteFactory(factory: (() => Promise<SpatialiteWasmModule>) | null): void {
   nativeWasmFactory = factory;
   nativeWasmModulePromise = null;
+  loadedNativeModule = null;
+}
+
+export function getLoadedSpatialiteVersion(): string {
+  return loadedNativeModule ? loadedNativeModule.UTF8ToString(loadedNativeModule._spatialite_wasm_version()) : "not initialized";
+}
+
+export function loadNativeSpatialiteWasm(): Promise<SpatialiteWasmModule> {
+  if (!nativeWasmFactory) return Promise.reject(new Error("Native SpatiaLite is not configured."));
+  const pending = nativeWasmModulePromise ??= nativeWasmFactory();
+  return pending.then((mod) => {
+    if (nativeWasmModulePromise === pending) loadedNativeModule = mod;
+    return mod;
+  }).catch((error: unknown) => {
+    if (nativeWasmModulePromise === pending) nativeWasmModulePromise = null;
+    throw error;
+  });
 }
 
 /**
@@ -119,7 +138,7 @@ function wrapSqlJsDatabase(db: Database): IDatabaseBackend {
       return false;
     },
     hasProj(): boolean {
-      return true;
+      return false;
     },
   };
 }
@@ -131,8 +150,7 @@ function wrapSqlJsDatabase(db: Database): IDatabaseBackend {
  */
 export async function createSpatialiteDatabase(data?: Uint8Array | ArrayBuffer): Promise<IDatabaseBackend> {
   if (nativeWasmFactory) {
-    nativeWasmModulePromise ??= nativeWasmFactory();
-    const mod = await nativeWasmModulePromise;
+    const mod = await loadNativeSpatialiteWasm();
     return NativeCDatabase.open(mod, data);
   }
 
