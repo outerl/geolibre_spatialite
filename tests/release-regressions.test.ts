@@ -53,6 +53,19 @@ describe("release regressions", () => {
     expect(() => db.transaction(() => Promise.resolve(1))).toThrow("synchronous");
   });
 
+  it("invalidates legacy geometry metadata even when a later SQL statement fails", async () => {
+    const db = await open();
+    db.exec("CREATE TABLE geometry_columns(f_table_name TEXT, f_geometry_column TEXT, type TEXT, coord_dimension TEXT, srid INT, spatial_index_enabled INT); INSERT INTO geometry_columns VALUES ('places','geometry','POINT','XY',0,0)");
+    expect(db.getGeometryColumns()[0]?.srid).toBe(0);
+    expect(() => { db.exec("UPDATE geometry_columns SET srid=7; SELECT * FROM missing_table"); }).toThrow();
+    expect(db.getGeometryColumns()[0]?.srid).toBe(7);
+    expect(() => db.executePreview("UPDATE geometry_columns SET srid=9; SELECT * FROM missing_table")).toThrow();
+    expect(db.getGeometryColumns()[0]?.srid).toBe(9);
+    db.query("UPDATE geometry_columns SET srid=11 RETURNING srid");
+    expect(db.getGeometryColumns()[0]?.srid).toBe(11);
+    expect(db.getGeometryColumns()[0]?.coordDimension).toBe(2);
+  });
+
   it("reprojects known CRS and rejects unknown CRS or bad geometry rather than silently omitting it", async () => {
     const db = await open();
     db.exec("CREATE TABLE mercator(geometry BLOB)");

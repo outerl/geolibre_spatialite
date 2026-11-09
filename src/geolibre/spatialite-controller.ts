@@ -53,6 +53,7 @@ export class SpatialiteController {
     this.loadAbort?.abort();
     const db = this.db;
     this.db = null;
+    this.lastQueryResult = null;
     this.container = null;
     if (this.loadTask) void this.loadTask.finally(() => db?.close());
     else db?.close();
@@ -67,7 +68,7 @@ export class SpatialiteController {
     if (typeof window !== "undefined" && "showOpenFilePicker" in window) {
       try {
         const picker = window.showOpenFilePicker as (options?: unknown) => Promise<FileSystemFileHandle[]>;
-        const [handle] = await picker({
+        const [handle] = await picker.call(window, {
           types: [
             {
               description: "SQLite / SpatiaLite Database (*.sqlite, *.db, *.spatialite)",

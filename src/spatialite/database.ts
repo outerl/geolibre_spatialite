@@ -69,14 +69,18 @@ export class SpatialiteDatabase {
     }
   }
 
-  exec(sql: string, params: SqlValue[] = []): void {
-    this.assertIdle();
-    this.rawDb.run(sql, params.length ? params : undefined);
-    // Metadata DML does not change schema_version. Ordinary data edits need no scan.
-    if (/\b(geometry_columns|spatial_ref_sys)\b/i.test(sql)) {
+  private invalidateMetadata(sql: string): void {
+    if (/\b(geometry_columns|spatial_ref_sys)\b/i.test(sql) && /\b(insert|update|delete|replace|create|drop|alter)\b/i.test(sql)) {
       this.geometryColumns = null;
       this.projections.clear();
     }
+  }
+
+  exec(sql: string, params: SqlValue[] = []): void {
+    this.assertIdle();
+    // A multi-statement call can change metadata before a later statement fails.
+    try { this.rawDb.run(sql, params.length ? params : undefined); }
+    finally { this.invalidateMetadata(sql); }
   }
 
   query<T = SqlRow>(sql: string, params: SqlValue[] = [], maxRows?: number): T[] {
@@ -98,13 +102,15 @@ export class SpatialiteDatabase {
         rows.push(row as T);
       }
       return rows;
-    } finally { stmt?.free(); }
+    } finally { stmt?.free(); this.invalidateMetadata(sql); }
   }
 
   /** Execute console statements in order, retaining only a bounded result preview. */
   executePreview(sql: string, maxRows = 101): SqlRow[] | null {
     this.assertIdle();
+    if (!Number.isSafeInteger(maxRows) || maxRows < 1) throw new Error("Invalid preview limit.");
     let result: SqlRow[] | null = null;
+    try {
     for (const stmt of this.rawDb.iterateStatements(sql)) {
       try {
         const columns = stmt.getColumnNames();
@@ -119,8 +125,8 @@ export class SpatialiteDatabase {
         }
       } finally { stmt.free(); }
     }
-    this.geometryColumns = null;
     return result;
+    } finally { this.invalidateMetadata(sql); }
   }
 
   transaction<T>(fn: () => T): T {
@@ -277,6 +283,7 @@ export class SpatialiteDatabase {
     }
     options.signal?.throwIfAborted();
     options.onProgress?.(features.length);
+    options.signal?.throwIfAborted();
     return { type: "FeatureCollection", features };
   }
 
