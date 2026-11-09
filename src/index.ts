@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (c) 2026 Outer Loop Consulting
+
 export * from "./spatialite/blob-codec.js";
 export * from "./spatialite/geodesic.js";
 export * from "./spatialite/spatial-functions.js";

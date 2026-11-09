@@ -61,7 +61,12 @@ Use Node.js 22.18+ (22.x) or 24+. `npm run serve:geolibre` serves an already bui
 
 The core source is under `src/spatialite/`, the public API under `src/api/`, and the GeoLibre UI under `src/geolibre/`.
 
-## License
+## License & Upstream Compliance
 
-LGPL-2.1-or-later. See [LICENSE](LICENSE) and [third-party notices](THIRD_PARTY_NOTICES.md).
+Licensed under the **GNU Lesser General Public License, Version 2.1 or later** (`LGPL-2.1-or-later`). See [LICENSE](LICENSE) for the full license text and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for complete upstream copyright and dependency notices.
+
+- **Upstream SpatiaLite License Election**: Upstream SpatiaLite is tri-licensed (MPL 1.1 / GPL 2.0+ / LGPL 2.1+); `geolibre-spatialite` elects LGPL 2.1+.
+- **GPL Copyleft Isolation**: `librttopo` (GPL-2.0+) is strictly excluded (`--disable-rttopo`) to ensure no copyleft contamination affects the engine or consuming applications.
+- **Consumer Plugin Compatibility**: Downstream plugins (such as MIT-licensed AequilibraE) interface via runtime service dispatch (`window.geolibreSpatialite` or `app.getService('spatialite')`) as a "work that uses the Library" under LGPL 2.1 Section 6, preserving consumer plugins' independent licensing.
+- **Source Distribution**: Complete corresponding source code and build instructions are bundled in every release ZIP under `source/` to guarantee relinking and modification rights under LGPL 2.1.
 

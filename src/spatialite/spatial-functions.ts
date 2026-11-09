@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (c) 2026 Outer Loop Consulting
+
 import type { Database } from "sql.js";
 import type { Geometry, Position } from "geojson";
 import { decodeSpatialiteBlob, decodeSpatialiteGeometry, encodeSpatialitePoint, geoJsonToSpatialiteBlob, wkbToSpatialiteBlob } from "./blob-codec.js";

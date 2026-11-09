@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (c) 2026 Outer Loop Consulting
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Geometry } from "geojson";
 import { SpatialiteDatabase } from "../src/spatialite/database.js";

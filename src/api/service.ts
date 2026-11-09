@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (c) 2026 Outer Loop Consulting
+
 import { SpatialiteDatabase } from "../spatialite/database.js";
 import type { GeoLibreSpatialiteService, ISpatialiteConnection } from "./types.js";
 import { PLUGIN_VERSION } from "../version.js";

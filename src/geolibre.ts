@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (c) 2026 Outer Loop Consulting
+
 import "./geolibre/plugin.css";
 import type { GeoLibreAppAPI, GeoLibrePlugin } from "./geolibre/host-api.js";
 import { SpatialiteController, MENU_ID, PANEL_ID } from "./geolibre/spatialite-controller.js";

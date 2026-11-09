@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (c) 2026 Outer Loop Consulting
+// Geodesic calculations based on Vincenty's formulae (T. Vincenty, 1975).
+
 // WGS84 ellipsoid constants
 const WGS84_A = 6378137.0; // semi-major axis in meters
 const WGS84_B = 6356752.314245; // semi-minor axis in meters

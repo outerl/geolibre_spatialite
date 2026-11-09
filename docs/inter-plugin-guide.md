@@ -53,3 +53,12 @@ There is no default feature limit. Pass a positive integer as the third argument
 An active asynchronous cursor blocks wrapper SQL, writes, export, and close operations until it finishes or cancellation settles. Do not bypass that guard through `rawDb`. Progress callbacks should update UI or request cancellation, not query the connection. Schema metadata is cached by SQLite schema version; call `refreshSpatialIndex()` if changing geometry metadata through the low-level handle. That helper only creates a temporary exact-equality endpoint view in schemas that do not already contain a SpatialIndex; it does not implement the native spatial index.
 
 The entire SQLite file and the resulting GeoJSON still reside in memory. For wide tables, request only the properties needed by the map.
+
+## Licensing for consumer plugins (LGPL-2.1 Section 6)
+
+`geolibre-spatialite` is distributed under **LGPL-2.1-or-later**. 
+
+Consumer plugins (such as the **AequilibraE** GeoLibre plugin, licensed under MIT) interact with `geolibre-spatialite` via runtime dynamic dispatch (`window.geolibreSpatialite` or `app.getService('spatialite')`). Under Section 5 and Section 6 of LGPL 2.1:
+- A consumer plugin that calls into `geolibre-spatialite` at runtime constitutes a **"work that uses the Library"**.
+- The consumer plugin **does not become a derivative work** and is **not infected by copyleft**. It may remain under MIT or any other license of its author's choice.
+- Users have the right under LGPL 2.1 to replace, modify, and rebuild `geolibre-spatialite` independently of the consumer plugin using the source inputs included in the plugin package.

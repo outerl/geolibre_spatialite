@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (c) 2026 Outer Loop Consulting
+
 import { describe, expect, it, vi } from "vitest";
 
 import { plugin, PLUGIN_ID, PLUGIN_NAME } from "../src/geolibre.js";

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (c) 2026 Outer Loop Consulting
+
 import initSqlJs, { type Database, type SqlJsStatic } from "sql.js";
 import sqlWasmBase64 from "virtual:sql-wasm-base64";
 

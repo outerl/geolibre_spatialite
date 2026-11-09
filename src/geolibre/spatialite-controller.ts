@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (c) 2026 Outer Loop Consulting
+
 import type { GeoLibreAppAPI } from "./host-api.js";
 import { SpatialiteDatabase, type SqlRow } from "../spatialite/database.js";
 import { addSpatialiteLayerToMap } from "./layer-manager.js";
