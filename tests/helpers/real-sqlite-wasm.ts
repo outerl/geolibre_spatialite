@@ -21,6 +21,8 @@ export async function createRealSqliteModule(): Promise<{
   mod: SpatialiteWasmModule;
   allocations: Set<number>;
   files: Map<string, Uint8Array>;
+  workerFsMounts: Map<string, { blobs: { name: string; data: Blob }[] }>;
+  openFlags: number[];
   close: () => void;
 }> {
   const require = createRequire(`${process.cwd()}/package.json`);
@@ -42,6 +44,7 @@ export async function createRealSqliteModule(): Promise<{
   const memory = captured;
   const raw = SQL as unknown as RawExports;
   const allocations = new Set<number>(), files = new Map<string, Uint8Array>();
+  const workerFsMounts = new Map<string, { blobs: { name: string; data: Blob }[] }>(), openFlags: number[] = [];
   const owners = new Map<number, Database>(), stmtOwners = new Map<number, number>(), transactions = new Set<number>();
   const text = (str: string): number => {
     const bytes = new TextEncoder().encode(str), ptr = raw._malloc(bytes.length + 1);
@@ -61,11 +64,34 @@ export async function createRealSqliteModule(): Promise<{
       mkdirTree() {}, writeFile(path, data) { files.set(path, data.slice()); },
       readFile(path) { return files.get(path)?.slice() ?? new Uint8Array(); },
       unlink(path) { files.delete(path); },
+      mount(_type, options, mountpoint) { workerFsMounts.set(mountpoint, options); },
+      unmount(mountpoint) { workerFsMounts.delete(mountpoint); },
     },
+    WORKERFS: {},
     _sqlite3_open(path, out) {
       const owner = new SQL.Database(files.get(raw.UTF8ToString(path)));
       const ptr = (owner as unknown as { db: number }).db;
       owners.set(ptr, owner); mod.setValue(out, ptr, "*"); return 0;
+    },
+    _sqlite3_open_v2(path, out, flags) {
+      openFlags.push(flags);
+      if (flags !== 1) { mod.setValue(out, 0, "*"); return 8; }
+      const filename = raw.UTF8ToString(path);
+      for (const [mountpoint, mount] of workerFsMounts) {
+        const prefix = `${mountpoint}/`;
+        if (!filename.startsWith(prefix)) continue;
+        const blob = mount.blobs.find((entry) => `${prefix}${entry.name}` === filename)?.data as (Blob & { nativeTestBytes?: Uint8Array }) | undefined;
+        const bytes = blob?.nativeTestBytes;
+        if (!bytes) { mod.setValue(out, 0, "*"); return 14; }
+        try {
+          const owner = new SQL.Database(bytes);
+          const ptr = (owner as unknown as { db: number }).db;
+          owners.set(ptr, owner); mod.setValue(out, ptr, "*"); return 0;
+        } catch {
+          mod.setValue(out, 0, "*"); return 26;
+        }
+      }
+      mod.setValue(out, 0, "*"); return 14;
     },
     _sqlite3_close_v2(ptr) { owners.get(ptr)?.close(); owners.delete(ptr); transactions.delete(ptr); return 0; },
     _sqlite3_prepare_v2(db, sql, n, out, tail) {
@@ -85,6 +111,11 @@ export async function createRealSqliteModule(): Promise<{
     _sqlite3_bind_parameter_count(ptr) {
       const sql = raw.UTF8ToString(raw._sqlite3_sql(ptr)).replace(/'(?:''|[^'])*'|--[^\n]*|\/\*[\s\S]*?\*\//g, "");
       return (sql.match(/\?/g) ?? []).length;
+    },
+    _sqlite3_stmt_readonly(ptr) {
+      const sql = raw.UTF8ToString(raw._sqlite3_sql(ptr)).trim().replace(/^(?:--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/\s*)+/, "");
+      if (/^PRAGMA\b/i.test(sql)) return /=/.test(sql) ? 0 : 1;
+      return /^(SELECT|WITH|EXPLAIN)\b/i.test(sql) && !/\b(INSERT|UPDATE|DELETE|REPLACE|CREATE|DROP|ALTER)\b/i.test(sql) ? 1 : 0;
     },
     _sqlite3_column_int64(ptr, col) { return BigInt(raw.UTF8ToString(raw._sqlite3_column_text(ptr, col))); },
     _sqlite3_bind_int64(ptr, col, value) {
@@ -108,5 +139,5 @@ export async function createRealSqliteModule(): Promise<{
     _spatialite_wasm_has_geos: () => 0,
     _spatialite_wasm_has_proj: () => 0,
   };
-  return { mod, allocations, files, close() { for (const db of owners.values()) db.close(); raw._free(versionPtr); } };
+  return { mod, allocations, files, workerFsMounts, openFlags, close() { for (const db of owners.values()) db.close(); raw._free(versionPtr); } };
 }

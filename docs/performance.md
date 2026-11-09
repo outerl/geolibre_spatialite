@@ -44,4 +44,49 @@ npm run benchmark -- /path/to/database.sqlite links /path/to/original/source
 
 Disk reads, Vite source transformation, checksum computation, and map rendering are outside the timed conversion. Runtime initialization is measured separately. Peak RSS includes the Node/Vite harness, resident input, WASM runtime, GeoJSON, and checksum work; it is not a browser-only memory measurement. OS caches were not flushed. These results measure database opening and data conversion, not total time from choosing a file to displaying a map.
 
-The whole database still resides in memory. These changes do not provide disk-backed/paged access or guarantee that multi-gigabyte files fit in a browser. Native libspatialite/GEOS, spatial-index acceleration, and worker-based database execution are separate future work.
+Those historical runs held the entire database in memory. They do not measure
+the new worker-backed paged API or establish a native speedup.
+
+## Benchmark an actual file with the native paged backend
+
+After building current native artifacts and the library, use Chrome, Chromium,
+or Edge (`CHROME_BIN` can name the executable):
+
+```sh
+npm run build:wasm
+npm run build
+npm run benchmark:paged -- /path/to/project_database.sqlite links --properties link_id,distance
+```
+
+The harness selects the original file through a browser file input. It does not
+read or serve the complete database merely to pass it to the browser. It opens a
+read-only connection with a 32 MiB SQLite cache and consumes feature batches
+without retaining a complete GeoJSON layer. The input must be a consistent
+standalone rollback-format snapshot; see the README's paged-file requirements.
+
+To compare an indexed spatial subset with the full layer, supply a bounding box
+in the layer's **source CRS**, and require a usable existing index if desired:
+
+```sh
+npm run benchmark:paged -- /path/to/database.sqlite places --column geometry --properties id,name --bbox 152,-28,154,-27 --require-index
+```
+
+Add `--compare-memory` to run equivalent reads through the native in-memory
+backend. That option explicitly reads the whole file into memory. The harness
+compares feature counts and order-independent FNV fingerprints of geometry and
+the same selected properties; these fingerprints are a regression check, not a
+cryptographic equivalence proof.
+
+JSON output separates worker/native startup and mount/open timings (reported by
+the connection), total open time, selective and full conversion, fingerprint
+overhead, and requested Blob slice counts/bytes. Slice statistics are not
+physical disk IO: ranges can be served by browser/OS caches or requested more
+than once. The selective and full reads share a connection and page cache, so
+repeat in fresh browser processes and report ordering and cache conditions.
+The default timeout is ten minutes. Timings exclude host map rendering.
+
+The benchmark does not measure total/peak browser memory: `memoryMeasurement`
+is null. Cache size excludes WASM/runtime, SQLite sorting/spatial scratch work,
+and consumer-held results. It also does not compare AequilibraE's existing paged
+reader. That comparison and actual large-file native measurements remain
+required before recommending an AequilibraE migration or publishing speedups.

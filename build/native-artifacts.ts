@@ -8,6 +8,7 @@ export interface NativeBuildInfo {
   engine: string;
   singleFile: boolean;
   wasmBigInt: boolean;
+  capabilities: { workerFS: true; sqliteOpenV2: true };
   components: Record<string, string>;
   files: Record<string, string>;
 }
@@ -24,8 +25,12 @@ export function readNativeArtifacts(directory: string): NativeBuildInfo {
   try { raw = JSON.parse(readFileSync(join(directory, "build-info.json"), "utf8")); }
   catch { throw new Error("Native SpatiaLite artifacts are missing. Run npm run build:wasm, or download the native artifact from CI into src/wasm."); }
   if (!isRecord(raw) || raw.format !== 1 || raw.engine !== "native-c-wasm" || raw.singleFile !== true || raw.wasmBigInt !== true ||
+      !isRecord(raw.capabilities) || raw.capabilities.workerFS !== true || raw.capabilities.sqliteOpenV2 !== true ||
       !isStringRecord(raw.files) || !isStringRecord(raw.components)) throw new Error("Invalid native build metadata.");
-  const info: NativeBuildInfo = { format:raw.format,engine:raw.engine,singleFile:raw.singleFile,wasmBigInt:raw.wasmBigInt,components:raw.components,files:raw.files };
+  const info: NativeBuildInfo = {
+    format: raw.format, engine: raw.engine, singleFile: raw.singleFile, wasmBigInt: raw.wasmBigInt,
+    capabilities: { workerFS: true, sqliteOpenV2: true }, components: raw.components, files: raw.files,
+  };
   if (!["sqlite", "spatialite", "geos", "proj", "zlib", "emscripten"].every((key) => typeof info.components[key] === "string")) throw new Error("Invalid component metadata.");
   const sqlite = info.components.sqlite?.split(".");
   if (!sqlite || sqlite.length !== 3 || !sqlite.every((part) => /^\d+$/.test(part))) throw new Error("Invalid SQLite build version.");

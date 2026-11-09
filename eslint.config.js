@@ -46,4 +46,10 @@ export default tseslint.config(
       globals: globals.node,
     },
   },
+  {
+    files: ["scripts/native-browser-fixture.mjs", "scripts/benchmark-paged-browser.mjs"],
+    languageOptions: {
+      globals: globals.browser,
+    },
+  },
 );

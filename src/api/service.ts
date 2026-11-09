@@ -2,8 +2,9 @@
 // Copyright (c) 2026 Outer Loop Consulting
 
 import { SpatialiteDatabase } from "../spatialite/database.js";
+import { PagedSpatialiteConnection } from "../spatialite/paged-connection.js";
 import { getActiveEngineType, getLoadedSpatialiteVersion, registerNativeSpatialiteFactory as registerFactory } from "../spatialite/sqlite-engine.js";
-import type { GeoLibreSpatialiteService, ISpatialiteConnection, SpatialiteEngineType } from "./types.js";
+import type { GeoLibreSpatialiteService, ISpatialiteConnection, PagedOpenOptions, IPagedSpatialiteConnection, SpatialiteEngineType } from "./types.js";
 import type { SpatialiteWasmModule } from "../spatialite/c-wasm-adapter.js";
 import { PLUGIN_VERSION } from "../version.js";
 
@@ -28,6 +29,10 @@ class SpatialiteServiceImpl implements GeoLibreSpatialiteService {
 
   async openDatabase(data?: Uint8Array | ArrayBuffer): Promise<ISpatialiteConnection> {
     return SpatialiteDatabase.open(data);
+  }
+
+  async openFile(blob: Blob, options?: PagedOpenOptions): Promise<IPagedSpatialiteConnection> {
+    return PagedSpatialiteConnection.open(blob, options);
   }
 
   async createDatabase(): Promise<ISpatialiteConnection> {

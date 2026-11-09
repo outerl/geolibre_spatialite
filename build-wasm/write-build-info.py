@@ -12,6 +12,7 @@ manifest = {
     'engine': 'native-c-wasm',
     'singleFile': True,
     'wasmBigInt': True,
+    'capabilities': {'workerFS': True, 'sqliteOpenV2': True},
     'components': {'emscripten': '3.1.64', 'sqlite': '3.46.1', 'spatialite': os.environ['SPATIALITE_VER'],
                    'geos': os.environ['GEOS_VER'], 'proj': os.environ['PROJ_VER'], 'zlib': os.environ['ZLIB_VER']},
     'files': {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in files},

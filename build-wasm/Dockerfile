@@ -6,7 +6,7 @@ ENV SQLITE_VER=3460100 PROJ_VER=9.4.1 GEOS_VER=3.12.2 SPATIALITE_VER=5.1.0 ZLIB_
 ENV SOURCE_DATE_EPOCH=1726185600
 ENV PKG_CONFIG_LIBDIR=/opt/wasm/lib/pkgconfig
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget autoconf automake libtool pkg-config bzip2 unzip ca-certificates sqlite3 \
+    wget autoconf automake autotools-dev libtool pkg-config bzip2 unzip ca-certificates sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 RUN --mount=type=bind,source=.,target=/context \
@@ -50,10 +50,15 @@ RUN emcmake cmake -S . -B build \
       -DBUILD_DOCUMENTATION=OFF -DBUILD_TESTING=OFF -DCMAKE_INSTALL_PREFIX=/opt/wasm && \
     cmake --build build -j$(nproc) && cmake --install build
 WORKDIR /build/libspatialite-${SPATIALITE_VER}
-RUN emconfigure ./configure --host=wasm32-unknown-emscripten --prefix=/opt/wasm \
+# SpatiaLite 5.1.0 ships an old config.sub that rejects Emscripten; refresh the
+# canonical triplet helpers and check the requested host before configure runs.
+RUN cp /usr/share/misc/config.sub /usr/share/misc/config.guess . && \
+    ./config.sub wasm32-unknown-emscripten && \
+    emconfigure ./configure --host=wasm32-unknown-emscripten --prefix=/opt/wasm \
       --enable-shared=no --enable-static=yes --disable-rttopo --disable-freexl \
       --disable-libxml2 --disable-gcp --disable-minizip --disable-iconv \
       --with-geosconfig=/opt/wasm/bin/geos-config \
+      CPPFLAGS="-I/opt/wasm/include" \
       CFLAGS="-O3 -I/opt/wasm/include -sDISABLE_EXCEPTION_CATCHING=0" \
       CXXFLAGS="-O3 -fexceptions -I/opt/wasm/include" \
       LDFLAGS="-L/opt/wasm/lib -sDISABLE_EXCEPTION_CATCHING=0 -lgeos -lc++ -lc++abi -lsqlite3 -lz -lm" \
@@ -64,14 +69,14 @@ WORKDIR /build
 COPY build-wasm/spatialite_bridge.c /build/spatialite_bridge.c
 RUN emcc -O3 -I/opt/wasm/include -c spatialite_bridge.c -o spatialite_bridge.o && \
     em++ -O3 -fexceptions spatialite_bridge.o -L/opt/wasm/lib \
-      -lspatialite -lgeos_c -lgeos -lproj -lsqlite3 -lz \
+      -lspatialite -lgeos_c -lgeos -lproj -lsqlite3 -lworkerfs.js -lz \
       --no-entry -sWASM_BIGINT=1 -sALLOW_MEMORY_GROWTH=1 \
       -sINITIAL_MEMORY=67108864 -sSTACK_SIZE=5242880 -sMAXIMUM_MEMORY=2147483648 \
       -sMODULARIZE=1 -sEXPORT_ES6=1 -sSINGLE_FILE=1 -sENVIRONMENT=web,worker \
       -sDISABLE_EXCEPTION_CATCHING=0 -sFORCE_FILESYSTEM=1 \
       --embed-file /opt/wasm/share/proj/proj.db@/opt/wasm/share/proj/proj.db \
-      -sEXPORTED_RUNTIME_METHODS='["getValue","setValue","UTF8ToString","FS","HEAPU8","stackSave","stackRestore","stackAlloc"]' \
-      -sEXPORTED_FUNCTIONS='["_sqlite3_open","_sqlite3_close_v2","_sqlite3_prepare_v2","_sqlite3_step","_sqlite3_finalize","_sqlite3_reset","_sqlite3_clear_bindings","_sqlite3_bind_parameter_count","_sqlite3_column_count","_sqlite3_column_type","_sqlite3_column_name","_sqlite3_column_text","_sqlite3_column_blob","_sqlite3_column_bytes","_sqlite3_column_double","_sqlite3_column_int64","_sqlite3_bind_null","_sqlite3_bind_text","_sqlite3_bind_blob","_sqlite3_bind_double","_sqlite3_bind_int64","_sqlite3_get_autocommit","_sqlite3_serialize","_sqlite3_free","_sqlite3_errmsg","_spatialite_wasm_init","_spatialite_wasm_cleanup","_spatialite_wasm_version","_spatialite_wasm_has_geos","_spatialite_wasm_has_proj","_malloc","_free"]' \
+      -sEXPORTED_RUNTIME_METHODS='["getValue","setValue","UTF8ToString","FS","WORKERFS","HEAPU8","stackSave","stackRestore","stackAlloc"]' \
+      -sEXPORTED_FUNCTIONS='["_sqlite3_open","_sqlite3_open_v2","_sqlite3_close_v2","_sqlite3_prepare_v2","_sqlite3_step","_sqlite3_finalize","_sqlite3_reset","_sqlite3_clear_bindings","_sqlite3_stmt_readonly","_sqlite3_bind_parameter_count","_sqlite3_column_count","_sqlite3_column_type","_sqlite3_column_name","_sqlite3_column_text","_sqlite3_column_blob","_sqlite3_column_bytes","_sqlite3_column_double","_sqlite3_column_int64","_sqlite3_bind_null","_sqlite3_bind_text","_sqlite3_bind_blob","_sqlite3_bind_double","_sqlite3_bind_int64","_sqlite3_get_autocommit","_sqlite3_serialize","_sqlite3_free","_sqlite3_errmsg","_spatialite_wasm_init","_spatialite_wasm_cleanup","_spatialite_wasm_version","_spatialite_wasm_has_geos","_spatialite_wasm_has_proj","_malloc","_free"]' \
       -o /dist/spatialite.js && \
     cp /opt/wasm/share/proj/proj.db /dist/proj.db && \
     cp libspatialite-${SPATIALITE_VER}/COPYING /dist/licenses/libspatialite.txt && \

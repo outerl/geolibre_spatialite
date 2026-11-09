@@ -7,6 +7,10 @@ import { nativeSpatialitePlugin } from "./build/native-spatialite-plugin.ts";
 
 export default defineConfig({
   plugins: [inlineSqlWasmPlugin(), nativeSpatialitePlugin()],
+  worker: {
+    format: "es",
+    plugins: () => [nativeSpatialitePlugin()],
+  },
   build: {
     emptyOutDir: false,
     target: "es2022",

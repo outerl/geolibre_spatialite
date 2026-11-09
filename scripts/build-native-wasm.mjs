@@ -8,10 +8,18 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const output = join(root, "src", "wasm");
 await mkdir(output, { recursive: true });
 await new Promise((resolve, reject) => {
+  const command = "docker buildx build";
   const child = spawn("docker", ["buildx", "build", "--target", "artifacts", "--output", `type=local,dest=${output}`,
     "-f", join(root, "build-wasm", "Dockerfile"), root], { stdio: "inherit", windowsHide: true });
-  child.on("error", reject);
-  child.on("exit", (code) => code === 0 ? resolve() : reject(new Error(`Native build failed (exit ${code}). Docker must be available and running.`)));
+  child.on("error", (error) => reject(new Error(`Could not start ${command}: ${error.message}`)));
+  child.on("exit", (code, signal) => {
+    if (code === 0) {
+      resolve();
+      return;
+    }
+    const reason = signal ? `signal ${signal}` : `exit code ${code ?? "unknown"}`;
+    reject(new Error(`${command} failed (${reason}). Review the BuildKit output above for the failing step.`));
+  });
 });
 const info = readNativeArtifacts(output);
 console.log(`Built SpatiaLite ${info.components.spatialite} with GEOS, PROJ, and embedded proj.db: ${output}`);

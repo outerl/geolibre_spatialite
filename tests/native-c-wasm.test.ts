@@ -68,6 +68,18 @@ describe("native adapter with real SQLite C execution", () => {
     vi.spyOn(bridge.mod,"_malloc").mockReturnValueOnce(0);
     expect(() => db.prepare("SELECT 1")).toThrow("memory allocation");
   });
+  it("finalizes an in-memory feature cursor when parameter binding fails", async () => {
+    registerNativeSpatialiteFactory(() => Promise.resolve(bridge.mod));
+    const db = await SpatialiteDatabase.open();
+    try {
+      db.exec("CREATE TABLE places(id INTEGER, geometry BLOB)");
+      db.exec("INSERT INTO places VALUES(1, NULL)");
+      expect(() => db.getTableGeoJson("places", "geometry", undefined, {
+        filters: [{ column: "id", operator: "=", value: 9223372036854775808n }],
+      })).toThrow("64-bit");
+      expect(db.export().length).toBeGreaterThan(0);
+    } finally { db.close(); }
+  });
   it("surfaces constraint and preparation errors and finalizes statements on close", () => {
     const db = open(); db.run("CREATE TABLE items(id INTEGER PRIMARY KEY); INSERT INTO items VALUES(1)");
     expect(() => { db.run("INSERT INTO items VALUES(1)"); }).toThrow(/UNIQUE|constraint/i);

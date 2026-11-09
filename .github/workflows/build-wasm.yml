@@ -25,6 +25,8 @@ jobs:
         run: npm run build
       - name: Exercise real SQLite, SpatiaLite, GEOS, PROJ, spatial indexes and export
         run: npm run test:native
+      - name: Exercise paged file reads and spatial queries in a real browser worker
+        run: npm run test:native:browser
       - uses: actions/upload-artifact@v4
         with:
           name: spatialite-native-${{ github.sha }}

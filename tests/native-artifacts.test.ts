@@ -18,6 +18,7 @@ async function fixture(): Promise<{path: string; info: NativeBuildInfo}> {
   const names = ["spatialite.js","proj.db","licenses/libspatialite.txt","licenses/geos.txt","licenses/proj.txt","licenses/zlib.txt",
     "sources/sqlite-amalgamation-3460100.zip","sources/libspatialite-5.1.0.tar.gz","sources/geos-3.12.2.tar.bz2","sources/proj-9.4.1.tar.gz","sources/zlib-1.3.1.tar.gz"];
   const info: NativeBuildInfo = { format:1,engine:"native-c-wasm",singleFile:true,wasmBigInt:true,
+    capabilities:{workerFS:true,sqliteOpenV2:true},
     components:{sqlite:"3.46.1",spatialite:"5.1.0",geos:"3.12.2",proj:"9.4.1",zlib:"1.3.1",emscripten:"3.1.64"},files:{} };
   for (const name of names) {
     await mkdir(dirname(join(path,name)),{recursive:true});
@@ -49,5 +50,11 @@ describe("native release artifact gate", () => {
     info.files["../outside"] = "untrusted";
     await writeFile(join(path,"build-info.json"),JSON.stringify(info));
     expect(() => readNativeArtifacts(path)).toThrow("artifact path");
+  });
+  it("rejects older artifacts without the WORKERFS and read-only-open capabilities", async () => {
+    const {path,info} = await fixture();
+    delete (info as unknown as { capabilities?: unknown }).capabilities;
+    await writeFile(join(path,"build-info.json"),JSON.stringify(info));
+    expect(() => readNativeArtifacts(path)).toThrow("metadata");
   });
 });

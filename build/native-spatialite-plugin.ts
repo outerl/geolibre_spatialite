@@ -2,7 +2,7 @@
 import { resolve } from "node:path";
 import process from "node:process";
 import type { Plugin } from "vite";
-import { readNativeArtifacts } from "./native-artifacts.js";
+import { readNativeArtifacts } from "./native-artifacts.ts";
 
 /** Production always includes native SpatiaLite; only source unit tests use the fallback. */
 export function nativeSpatialitePlugin(options: { testFallback?: boolean } = {}): Plugin {

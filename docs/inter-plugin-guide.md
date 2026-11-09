@@ -56,7 +56,45 @@ There is no default feature limit. Pass a positive integer as the third argument
 
 An active asynchronous cursor blocks wrapper SQL, writes, export, and close operations until it finishes or cancellation settles. Do not bypass that guard through `rawDb`. Progress callbacks should update UI or request cancellation, not query the connection. Schema metadata is cached by SQLite schema version; call `refreshSpatialIndex()` if changing geometry metadata through the low-level handle. Native spatial indexes are managed by SpatiaLite. The old exact-equality TEMP view is only a compatibility helper for the source-test fallback and is never installed over a native index.
 
-The entire SQLite file and the resulting GeoJSON still reside in memory. For wide tables, request only the properties needed by the map.
+## Read a large file without importing it into memory
+
+`openFile()` is a separate asynchronous read-only API for a `Blob` or `File`. It mounts the original object with native Emscripten WORKERFS in a dedicated worker, opens SQLite with `SQLITE_OPEN_READONLY`, disables mmap, and uses a 32 MiB page cache by default (configurable from 1–512 MiB). The worker is bundled inline, so it can run offline. The host Content Security Policy must allow `worker-src blob:`. Older native artifacts without the WORKERFS and `sqlite3_open_v2` capability metadata are rejected.
+
+```ts
+const paged = await spatialite.openFile(file, { cacheMiB: 64 });
+try {
+  const rows = await paged.query("SELECT id, name FROM places WHERE category = ?", ["park"], {
+    maxRows: 10_000,
+    maxBytes: 4 * 1024 * 1024,
+  });
+  for await (const batch of paged.streamQuery("SELECT id, name FROM places", [], { batchSize: 256 })) {
+    await writeBatch(batch); // backpressure: the next query batch starts after this completes
+  }
+  for await (const features of paged.streamTableGeoJson("places", "geometry", undefined, {
+    propertyColumns: ["id", "name"],
+    bbox: [-123, 36, -121, 38],
+    filters: [{ column: "category", operator: "=", value: "park" }],
+    requireSpatialIndex: true,
+    batchSize: 256,
+  })) {
+    await addFeatures(features);
+  }
+} finally {
+  await paged.close();
+}
+```
+
+Materialized `query()` results default to a maximum of 10,000 rows and 4 MiB, and throw if either bound is exceeded. Pull streams default to 256 rows per batch and continue until exhausted unless `maxRows` is set. The per-batch byte bound defaults to 4 MiB and accepts at most 16 MiB; rows larger than 16 MiB are rejected. These bounds cover returned row payload, not SQLite sorting/work memory or total WASM memory.
+
+The query surface only prepares one read-only SQL statement. It does not expose transactions, writes, export, or synchronous reads. Use an `AbortSignal` to cancel a stream. Cancellation terminates that worker and closes the entire paged connection, rejecting all outstanding work; open the file again to continue. Early iterator return finalizes only that cursor. `getStats()` reports configured cache size, timing, and requested Blob slice bytes; requested slices are not a measurement of physical disk I/O.
+
+The file must be a consistent, standalone snapshot. WAL-format headers are rejected because the API receives no WAL/SHM sidecars. A WAL checkpoint that leaves the database in WAL journal mode is not enough; after checkpointing, switch to DELETE journal mode while no writer is active, or pass a standalone rollback-format snapshot such as the result of the byte-backed connection's `export()`. The API cannot detect a rollback journal that is not included in the Blob, so do not open a file that may need sidecar recovery.
+
+Feature `bbox` coordinates are in the geometry's source CRS. The filter uses envelope overlap, not exact geometry intersection, then removes RTree float-rounding false positives by checking each geometry BLOB's exact envelope. A valid SpatiaLite RTree is selected explicitly when metadata, the conventional `idx_<table>_<geometry>` RTree, and a usable rowid are present. Otherwise bbox reads scan rows; `requireSpatialIndex` makes absence or structural mismatch an error. Index content consistency is the producer's responsibility. Output GeoJSON geometry remains WGS84, and large integer properties remain decimal strings.
+
+The byte-backed API continues to retain its database in WASM memory. The paged API removes that full-file copy, but SQLite cache, query work, one large geometry, and a materialized feature collection can still consume substantial memory. For wide tables, select only the map properties and prefer feature batches when the consumer can process them incrementally.
+
+After building with native artifacts, `npm run test:native:browser` runs the deterministic Chromium worker fixture. It reports runtime initialization, file open, selective reads, full-layer conversion, feature counts, cache size, and requested slice bytes for its generated fixture. These smoke timings are not a benchmark on an application dataset and do not claim a native speedup.
 
 ## Licensing for consumer plugins (LGPL-2.1 Section 6)
 

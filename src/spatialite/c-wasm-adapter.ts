@@ -38,11 +38,15 @@ export interface SpatialiteWasmModule {
   _free(ptr: number): void;
   FS: {
     mkdirTree(path: string): void;
+    mount?(type: unknown, options: { blobs: { name: string; data: Blob }[] }, mountpoint: string): unknown;
+    unmount?(mountpoint: string): void;
     writeFile(path: string, data: Uint8Array): void;
     readFile(path: string): Uint8Array;
     unlink(path: string): void;
   };
+  WORKERFS?: unknown;
   _sqlite3_open(filename: number, ppDb: number): number;
+  _sqlite3_open_v2?(filename: number, ppDb: number, flags: number, vfs: number): number;
   _sqlite3_close_v2(db: number): number;
   _sqlite3_prepare_v2(db: number, sql: number, bytes: number, ppStmt: number, tail: number): number;
   _sqlite3_step(stmt: number): number;
@@ -63,6 +67,7 @@ export interface SpatialiteWasmModule {
   _sqlite3_bind_blob(stmt: number, col: number, value: number, bytes: number, destructor: number): number;
   _sqlite3_bind_double(stmt: number, col: number, value: number): number;
   _sqlite3_bind_int64(stmt: number, col: number, value: bigint): number;
+  _sqlite3_stmt_readonly?(stmt: number): number;
   _sqlite3_get_autocommit(db: number): number;
   _sqlite3_serialize(db: number, schema: number, size: number, flags: number): number;
   _sqlite3_free(ptr: number): void;
@@ -148,6 +153,16 @@ export class NativeCStatement implements IStatementBackend {
     }
     return row;
   }
+  getOutputByteLength(): number {
+    this.assertOpen();
+    let bytes = 0;
+    const count = this.mod._sqlite3_column_count(this.stmtPtr);
+    for (let i = 0; i < count; i++) {
+      const type = this.mod._sqlite3_column_type(this.stmtPtr, i);
+      bytes += type === 3 || type === 4 ? this.mod._sqlite3_column_bytes(this.stmtPtr, i) : 8;
+    }
+    return bytes;
+  }
   getAsObject(): SqlRow {
     const values = this.get();
     return Object.fromEntries(this.getColumnNames().map((name, i) => [name, values[i] ?? null]));
@@ -158,6 +173,7 @@ export class NativeCStatement implements IStatementBackend {
       this.mod.UTF8ToString(this.mod._sqlite3_column_name(this.stmtPtr, i)));
     return [...this.columnNamesCache];
   }
+  getBindParameterCount(): number { this.assertOpen(); return this.mod._sqlite3_bind_parameter_count(this.stmtPtr); }
   bind(params: SqlValue[] = []): boolean {
     this.reset();
     if (params.length > this.mod._sqlite3_bind_parameter_count(this.stmtPtr)) throw new Error("Too many SQL parameters.");
