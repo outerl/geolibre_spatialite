@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }} / Node ${{ matrix.node-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+        node-version:
+          - 22
+          - 24
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Run TypeScript typecheck
+        run: npm run typecheck
+
+      - name: Run test suite with coverage
+        run: npm test
+
+      - name: Build library and plugin bundles
+        run: npm run build
+
+  package:
+    name: Package & Verify (${{ matrix.os }})
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+          - macos-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build installable plugin archive
+        run: npm run package:geolibre
+
+      - name: Verify package checksum and integrity
+        run: npm run test:package
+
+      - name: Upload plugin archive and checksum artifact
+        if: matrix.os == 'ubuntu-latest' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: geolibre-spatialite-${{ github.sha }}
+          path: |
+            geolibre-plugin/dist/*.zip
+            geolibre-plugin/dist/*.zip.sha256.json
+          if-no-files-found: error
+          retention-days: 30
+
+  notify-site:
+    name: Request central site deployment
+    needs: package
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.package.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Dispatch plugin update event
+        uses: actions/github-script@v7
+        env:
+          GEO_SITE_DISPATCH_TOKEN: ${{ secrets.GEO_SITE_DISPATCH_TOKEN }}
+        with:
+          github-token: ${{ secrets.GEO_SITE_DISPATCH_TOKEN || github.token }}
+          script: |
+            if (!process.env.GEO_SITE_DISPATCH_TOKEN) {
+              const message = 'GEO_SITE_DISPATCH_TOKEN is not configured. The plugin archive was built, but no central site deployment was requested.';
+              core.warning(message);
+              await core.summary.addHeading('Central site deployment not requested').addText(message).write();
+              return;
+            }
+
+            await github.rest.repos.createDispatchEvent({
+              owner: 'outerl',
+              repo: 'geolibre_site',
+              event_type: 'plugin-updated',
+              client_payload: {
+                repository: `${context.repo.owner}/${context.repo.repo}`,
+                sha: context.sha,
+              },
+            });
+
+            await core.summary
+              .addHeading('Central site deployment requested')
+              .addText(`Dispatched ${context.repo.owner}/${context.repo.repo} at ${context.sha} to outerl/geolibre_site.`);

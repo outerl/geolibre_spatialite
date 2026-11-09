@@ -1,0 +1,183 @@
+.spatialite-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  color: var(--geolibre-text, #1f2937);
+  background: var(--geolibre-bg, #ffffff);
+  box-sizing: border-box;
+  padding: 12px;
+  gap: 16px;
+  overflow-y: auto;
+}
+
+.spatialite-header {
+  border-bottom: 1px solid var(--geolibre-border, #e5e7eb);
+  padding-bottom: 8px;
+}
+
+.spatialite-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 4px 0;
+}
+
+.spatialite-subtitle {
+  font-size: 12px;
+  color: var(--geolibre-text-muted, #6b7280);
+  margin: 0;
+}
+
+.spatialite-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.spatialite-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--geolibre-text-muted, #4b5563);
+  margin: 0;
+}
+
+.spatialite-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 4px;
+  border: 1px solid var(--geolibre-border, #d1d5db);
+  background: var(--geolibre-btn-bg, #f3f4f6);
+  color: var(--geolibre-btn-text, #111827);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.spatialite-btn:hover {
+  background: var(--geolibre-btn-hover, #e5e7eb);
+  border-color: #9ca3af;
+}
+
+.spatialite-btn-primary {
+  background: #2563eb;
+  border-color: #1d4ed8;
+  color: #ffffff;
+}
+
+.spatialite-btn-primary:hover {
+  background: #1d4ed8;
+  border-color: #1e40af;
+}
+
+.spatialite-table-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--geolibre-border, #e5e7eb);
+  border-radius: 4px;
+  padding: 6px;
+}
+
+.spatialite-table-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--geolibre-item-bg, #f9fafb);
+  border: 1px solid transparent;
+}
+
+.spatialite-table-item:hover {
+  background: var(--geolibre-item-hover, #f3f4f6);
+}
+
+.spatialite-table-name {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.spatialite-table-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  background: #dbeafe;
+  color: #1e40af;
+  font-weight: 600;
+}
+
+.spatialite-sql-editor {
+  width: 100%;
+  height: 90px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  border: 1px solid var(--geolibre-border, #d1d5db);
+  border-radius: 4px;
+  padding: 8px;
+  box-sizing: border-box;
+  background: var(--geolibre-input-bg, #ffffff);
+  color: var(--geolibre-input-text, #111827);
+  resize: vertical;
+}
+
+.spatialite-results-container {
+  max-height: 200px;
+  overflow: auto;
+  border: 1px solid var(--geolibre-border, #e5e7eb);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.spatialite-results-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.spatialite-results-table th,
+.spatialite-results-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--geolibre-border, #e5e7eb);
+  white-space: nowrap;
+}
+
+.spatialite-results-table th {
+  background: var(--geolibre-th-bg, #f9fafb);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+
+.spatialite-alert {
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.spatialite-alert-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+}
+
+.spatialite-alert-success {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+}
+
+.spatialite-alert-info {
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+}

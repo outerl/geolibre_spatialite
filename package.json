@@ -1,0 +1,50 @@
+{
+  "name": "geolibre-spatialite",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SpatiaLite database engine and Spatial SQL support for GeoLibre",
+  "type": "module",
+  "license": "LGPL-2.1-or-later",
+  "types": "./dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/geolibre-spatialite.js"
+    }
+  },
+  "scripts": {
+    "build": "npm run build:types && npm run build:library && npm run build:geolibre",
+    "build:geolibre": "vite build --config vite.geolibre.config.ts --configLoader runner",
+    "build:library": "vite build --configLoader runner",
+    "build:types": "tsc -p tsconfig.build.json",
+    "check": "npm run lint && npm run typecheck && npm test && npm run build",
+    "lint": "eslint . --max-warnings 0",
+    "package:geolibre": "npm run build:geolibre && node scripts/package-geolibre-plugin.mjs",
+    "test:package": "node scripts/test-geolibre-package.mjs",
+    "serve:geolibre": "node scripts/serve-geolibre-plugin.mjs",
+    "test": "vitest run --coverage --configLoader runner",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/geojson": "^7946.0.16",
+    "@types/node": "^25.9.2",
+    "@types/proj4": "^2.5.6",
+    "@types/sql.js": "^1.4.9",
+    "@vitest/coverage-v8": "^4.1.8",
+    "eslint": "^10.4.1",
+    "globals": "^17.6.0",
+    "jsdom": "^30.0.1",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.60.1",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.8"
+  },
+  "dependencies": {
+    "proj4": "^2.22.0",
+    "sql.js": "^1.14.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
