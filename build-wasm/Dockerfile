@@ -64,6 +64,7 @@ WORKDIR /build/libspatialite-${SPATIALITE_VER}
 RUN cp /usr/share/misc/config.sub /usr/share/misc/config.guess . && \
     sed -i 's/^SUBDIRS = src test.*/SUBDIRS = src/' Makefile.in && \
     sed -i 's/mod_spatialite.la//g' src/Makefile.in && \
+    sed -i -E 's/^noinst_LTLIBRARIES = lib([a-zA-Z0-9_]+)\.la [a-zA-Z0-9_]+\.la/noinst_LTLIBRARIES = lib\1.la/' src/*/Makefile.in && \
     ./config.sub wasm32-unknown-emscripten && \
     (ac_cv_lib_z_inflateInit_=yes \
      ac_cv_search_proj_normalize_for_visualization=-lproj \
