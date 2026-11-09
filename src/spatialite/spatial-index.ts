@@ -1,17 +1,25 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (c) 2026 Outer Loop Consulting
+
 import type { Database } from "sql.js";
+import type { IDatabaseBackend } from "./c-wasm-adapter.js";
 
 export function quoteIdentifier(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
 }
 
-const versions = new WeakMap<Database, number>();
+const versions = new WeakMap<object, number>();
 
 /**
  * Optional exact-BLOB endpoint lookup compatibility for synthetic network schemas.
  * This is NOT SpatiaLite's bounding-box SpatialIndex virtual table. Never shadow a
  * real SpatialIndex, modify the source schema, or silently claim index support.
  */
-export function ensureSpatialIndexView(db: Database): void {
+export function ensureSpatialIndexView(db: IDatabaseBackend | Database): void {
+  if ("isNativeC" in db && db.isNativeC) {
+    // True native C SpatiaLite already provides native VirtualSpatialIndex / R*Tree.
+    return;
+  }
   const version = Number(db.exec("PRAGMA main.schema_version")[0]?.values[0]?.[0]);
   if (versions.get(db) === version) return;
   const existing = db.exec("SELECT 1 FROM main.sqlite_master WHERE lower(name) = 'spatialindex'");

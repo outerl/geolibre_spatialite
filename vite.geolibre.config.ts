@@ -3,15 +3,15 @@ import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
 import { inlineSqlWasmPlugin } from "./build/inline-sql-wasm-plugin.ts";
-
-import pkg from "./package.json" with { type: "json" };
+import { nativeSpatialitePlugin } from "./build/native-spatialite-plugin.ts";
 
 export default defineConfig({
-  define: {
-    __PLUGIN_VERSION__: JSON.stringify(pkg.version),
-  },
   publicDir: false,
-  plugins: [inlineSqlWasmPlugin()],
+  plugins: [inlineSqlWasmPlugin(), nativeSpatialitePlugin()],
+  worker: {
+    format: "es",
+    plugins: () => [nativeSpatialitePlugin()],
+  },
   build: {
     target: "es2022",
     lib: {

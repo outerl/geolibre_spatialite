@@ -1,122 +1,21 @@
-# Compiling Upstream C `libspatialite` to WebAssembly
+# Native SpatiaLite build
 
-This document provides the recipe and build instructions for compiling the upstream C libraries (`libspatialite`, `geos`, `proj`, and `sqlite3`) into WebAssembly using Emscripten.
+`npm run build:wasm` runs Docker Buildx with `build-wasm/Dockerfile` and exports the artifact stage directly into `src/wasm/`. `bash build-wasm/build-wasm.sh` delegates to the same command. There is no implicit local-emcc fallback or container extraction step.
 
-While `geolibre-spatialite` includes a high-performance inlined SQLite WASM engine with built-in SpatiaLite spatial functions, advanced users or custom builds requiring the full C `libspatialite` extension can use this workflow.
+Pinned components: Emscripten 3.1.64, SQLite 3.46.1, zlib 1.3.1, PROJ 9.4.1, GEOS 3.12.2, and libspatialite 5.1.0.
 
----
+1. Build a static target SQLite library, its headers, and pkg-config metadata. A separate host sqlite3 executable generates PROJ's database.
+2. Cross-compile zlib, PROJ, and GEOS; configure SpatiaLite against those target libraries. Disable RTTOPO, FreeXL, libxml2, minizip, GCP, and iconv.
+3. Compile the C connection bridge, then link with em++ and exception handling for the C++ dependencies. `WASM_BIGINT=1` is required by the adapter's i64 ABI.
+4. Generate a self-contained ES module with `SINGLE_FILE=1`. Embed `proj.db` at `/opt/wasm/share/proj/proj.db`, matching PROJ's installed search path. The module performs no runtime resource downloads.
+5. Export `spatialite.js`, `proj.db`, component license texts, corresponding source archives, and `build-info.json` at the artifact root. The manifest records file hashes and ABI/runtime options.
 
-## 1. Licensing Considerations During Compilation
+The Vite native-runtime plugin verifies those artifacts and imports the module into both production bundles. Missing or mismatched artifacts fail the build. The source-unit-test configuration explicitly selects the fallback; it cannot be used to package a production release.
 
-When building `libspatialite`:
-- **`libspatialite`** is tri-licensed (MPL 1.1 / LGPL 2.1+ / GPL 2.0+).
-- **`librttopo`** is strictly **GPL v2+**.
-  - **Important**: To retain an **LGPL v2.1** license and avoid forcing GPL on the binary, compile with `--disable-rttopo`.
-- **`freexl`** is for Excel file reading; compile with `--disable-freexl` to reduce binary size.
+`npm run check` requires the native artifacts, runs source checks, builds both bundles, and executes `npm run test:native`. Native integration checks real SQL execution, parameter rebinding, i64 values, GEOS predicates, PROJ transformations, geometry-column/index triggers, allocation cleanup, and WAL export/reopen. The ZIP smoke test separately checks native execution through its actual entry point with fetch disabled.
 
----
+CI invokes the reusable native-build workflow first. Only a successful compiled-engine test uploads the artifact; all test and packaging jobs consume that same artifact. JavaScript mocks or version strings cannot substitute for the native gate.
 
-## 2. Dockerfile for Emscripten Build
+For source changes, the ZIP includes upstream archives in `sources/` and in `source/src/wasm/sources/`. Docker reuses archives present in `src/wasm/sources/` before downloading missing pinned distributions. Edit/repack the relevant archive, change the bridge or build flags as needed, rebuild, and run the full checks. Do not edit `spatialite.js` independently of its generated build metadata.
 
-Create `Dockerfile.wasm`:
-
-```dockerfile
-FROM emscripten/emsdk:3.1.64
-
-WORKDIR /build
-
-# 1. Download and extract upstream sources
-ENV SQLITE_VER=3460100
-ENV PROJ_VER=9.4.1
-ENV GEOS_VER=3.12.2
-ENV SPATIALITE_VER=5.1.0
-
-RUN apt-get update && apt-get install -y wget autoconf libtool pkg-config
-
-# SQLite3 amalgamation
-RUN wget https://www.sqlite.org/2024/sqlite-amalgamation-${SQLITE_VER}.zip && \
-    unzip sqlite-amalgamation-${SQLITE_VER}.zip
-
-# PROJ
-RUN wget https://download.osgeo.org/proj/proj-${PROJ_VER}.tar.gz && \
-    tar -xzf proj-${PROJ_VER}.tar.gz
-
-# GEOS
-RUN wget https://download.osgeo.org/geos/geos-${GEOS_VER}.tar.bz2 && \
-    tar -xjf geos-${GEOS_VER}.tar.bz2
-
-# SpatiaLite
-RUN wget https://www.gaia-gis.it/gaia-sins/libspatialite-sources/libspatialite-${SPATIALITE_VER}.tar.gz && \
-    tar -xzf libspatialite-${SPATIALITE_VER}.tar.gz
-
-# 2. Build PROJ (static library)
-WORKDIR /build/proj-${PROJ_VER}
-RUN mkdir build && cd build && \
-    emcmake cmake .. \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DBUILD_SHARED_LIBS=OFF \
-      -DENABLE_TIFF=OFF \
-      -DENABLE_CURL=OFF \
-      -DBUILD_PROJSYNC=OFF \
-      -DBUILD_APPS=OFF \
-      -DCMAKE_INSTALL_PREFIX=/opt/wasm && \
-    emmake make -j$(nproc) && \
-    emmake make install
-
-# 3. Build GEOS (static library)
-WORKDIR /build/geos-${GEOS_VER}
-RUN mkdir build && cd build && \
-    emcmake cmake .. \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DBUILD_SHARED_LIBS=OFF \
-      -DBUILD_DOCUMENTATION=OFF \
-      -DCMAKE_INSTALL_PREFIX=/opt/wasm && \
-    emmake make -j$(nproc) && \
-    emmake make install
-
-# 4. Build SpatiaLite (static library)
-WORKDIR /build/libspatialite-${SPATIALITE_VER}
-RUN emconfigure ./configure \
-      --host=wasm32-unknown-emscripten \
-      --prefix=/opt/wasm \
-      --enable-shared=no \
-      --enable-static=yes \
-      --disable-rttopo \
-      --disable-freexl \
-      --disable-libxml2 \
-      --disable-gcp \
-      CFLAGS="-O3 -I/opt/wasm/include" \
-      LDFLAGS="-L/opt/wasm/lib" && \
-    emmake make -j$(nproc) && \
-    emmake make install
-
-# 5. Compile combined SQLite + SpatiaLite WASM module
-WORKDIR /build
-RUN emcc -O3 -flto \
-    /build/sqlite-amalgamation-${SQLITE_VER}/sqlite3.c \
-    -I/opt/wasm/include \
-    -L/opt/wasm/lib \
-    -lspatialite -lgeos_c -lgeos -lproj \
-    -s WASM=1 \
-    -s ALLOW_MEMORY_GROWTH=1 \
-    -s EXPORTED_RUNTIME_METHODS='["ccall", "cwrap"]' \
-    -s EXPORTED_FUNCTIONS='["_sqlite3_open", "_sqlite3_close", "_sqlite3_exec", "_spatialite_init"]' \
-    -o spatialite.js
-```
-
----
-
-## 3. Running the Build
-
-```bash
-# Build the container
-docker build -t spatialite-wasm-builder -f Dockerfile.wasm .
-
-# Copy out the compiled WASM bundle
-docker create --name spatialite-temp spatialite-wasm-builder
-docker cp spatialite-temp:/build/spatialite.js ./dist/
-docker cp spatialite-temp:/build/spatialite.wasm ./dist/
-docker rm spatialite-temp
-```
-
-This generates `spatialite.wasm` statically linked with `libspatialite`, `geos`, and `proj`.
+The plugin still loads databases fully into memory. The C runtime does not provide paged file I/O, and the JavaScript map codec remains limited to ordinary uncompressed 2D geometries.

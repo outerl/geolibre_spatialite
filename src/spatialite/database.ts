@@ -1,10 +1,22 @@
-import type { Database, Statement } from "sql.js";
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (c) 2026 Outer Loop Consulting
+
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import proj4 from "proj4";
 
 import { decodeSpatialiteGeometry } from "./blob-codec.js";
-import { ensureSpatialIndexView, quoteIdentifier } from "./spatial-index.js";
+import { ensureSpatialIndexView } from "./spatial-index.js";
 import { createSpatialiteDatabase } from "./sqlite-engine.js";
+import type { IDatabaseBackend, IStatementBackend } from "./c-wasm-adapter.js";
+import {
+  buildFeatureReadPlan,
+  geometryEnvelope,
+  geometryEnvelopeIntersects,
+  normalizeFeatureOptions,
+  validSpatialIndexObject,
+  type FeatureReadOptions,
+} from "./feature-read-plan.js";
+export type { AttributeFilter, FeatureFilterOperator, FeatureFilterValue, SourceBoundingBox } from "./feature-read-plan.js";
 
 export interface GeometryColumnInfo {
   tableName: string;
@@ -14,14 +26,9 @@ export interface GeometryColumnInfo {
   srid: number;
   spatialIndexEnabled: boolean;
 }
-export type SqlValue = number | string | Uint8Array | null;
+export type SqlValue = number | string | Uint8Array | null | bigint;
 export type SqlRow = Record<string, SqlValue>;
-export interface GeoJsonReadOptions {
-  /** Omit for all attributes; [] loads geometry only. */
-  propertyColumns?: readonly string[];
-  signal?: AbortSignal;
-  onProgress?: (features: number) => void;
-}
+export type GeoJsonReadOptions = FeatureReadOptions;
 
 function yieldToBrowser(): Promise<void> {
   const scheduler = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
@@ -36,7 +43,7 @@ function yieldToBrowser(): Promise<void> {
 }
 
 export class SpatialiteDatabase {
-  private db: Database | null;
+  private db: IDatabaseBackend | null;
   private schemaVersion = -1;
   private tableNames: string[] | null = null;
   private geometryColumns: GeometryColumnInfo[] | null = null;
@@ -44,15 +51,31 @@ export class SpatialiteDatabase {
   private activeReaders = 0;
   private readonly projections = new Map<number, proj4.Converter>();
 
-  constructor(db: Database) { this.db = db; }
+  constructor(db: IDatabaseBackend) { this.db = db; }
 
   static async open(data?: Uint8Array | ArrayBuffer): Promise<SpatialiteDatabase> {
     return new SpatialiteDatabase(await createSpatialiteDatabase(data));
   }
 
-  get rawDb(): Database {
+  get rawDb(): IDatabaseBackend {
     if (!this.db) throw new Error("Database is closed.");
     return this.db;
+  }
+
+  get isNativeC(): boolean {
+    return this.rawDb.isNativeC;
+  }
+
+  getSpatialiteVersion(): string {
+    return this.rawDb.getSpatialiteVersion ? this.rawDb.getSpatialiteVersion() : "unknown";
+  }
+
+  hasGeos(): boolean {
+    return this.rawDb.hasGeos ? this.rawDb.hasGeos() : false;
+  }
+
+  hasProj(): boolean {
+    return this.rawDb.hasProj ? this.rawDb.hasProj() : false;
   }
 
   private assertIdle(): void {
@@ -69,20 +92,24 @@ export class SpatialiteDatabase {
     }
   }
 
-  exec(sql: string, params: SqlValue[] = []): void {
-    this.assertIdle();
-    this.rawDb.run(sql, params.length ? params : undefined);
-    // Metadata DML does not change schema_version. Ordinary data edits need no scan.
-    if (/\b(geometry_columns|spatial_ref_sys)\b/i.test(sql)) {
+  private invalidateMetadata(sql: string): void {
+    if (/\b(geometry_columns|spatial_ref_sys)\b/i.test(sql) && /\b(insert|update|delete|replace|create|drop|alter)\b/i.test(sql)) {
       this.geometryColumns = null;
       this.projections.clear();
     }
   }
 
+  exec(sql: string, params: SqlValue[] = []): void {
+    this.assertIdle();
+    // A multi-statement call can change metadata before a later statement fails.
+    try { this.rawDb.run(sql, params.length ? params : undefined); }
+    finally { this.invalidateMetadata(sql); }
+  }
+
   query<T = SqlRow>(sql: string, params: SqlValue[] = [], maxRows?: number): T[] {
     this.assertIdle();
     if (maxRows !== undefined && (!Number.isSafeInteger(maxRows) || maxRows < 0)) throw new Error("Invalid row limit.");
-    let stmt: Statement | null = null;
+    let stmt: IStatementBackend | null = null;
     try {
       stmt = this.rawDb.prepare(sql);
       if (params.length) stmt.bind(params);
@@ -98,13 +125,15 @@ export class SpatialiteDatabase {
         rows.push(row as T);
       }
       return rows;
-    } finally { stmt?.free(); }
+    } finally { stmt?.free(); this.invalidateMetadata(sql); }
   }
 
   /** Execute console statements in order, retaining only a bounded result preview. */
   executePreview(sql: string, maxRows = 101): SqlRow[] | null {
     this.assertIdle();
+    if (!Number.isSafeInteger(maxRows) || maxRows < 1) throw new Error("Invalid preview limit.");
     let result: SqlRow[] | null = null;
+    try {
     for (const stmt of this.rawDb.iterateStatements(sql)) {
       try {
         const columns = stmt.getColumnNames();
@@ -119,8 +148,8 @@ export class SpatialiteDatabase {
         }
       } finally { stmt.free(); }
     }
-    this.geometryColumns = null;
     return result;
+    } finally { this.invalidateMetadata(sql); }
   }
 
   transaction<T>(fn: () => T): T {
@@ -164,7 +193,9 @@ export class SpatialiteDatabase {
         }>(`SELECT f_table_name, f_geometry_column, ${typeColumn} AS geometry_type, coord_dimension, srid, spatial_index_enabled FROM geometry_columns`);
         for (const row of rows) columns.push({
           tableName: row.f_table_name, columnName: row.f_geometry_column, type: String(row.geometry_type),
-          coordDimension: typeof row.coord_dimension === "number" ? row.coord_dimension : row.coord_dimension.length,
+          coordDimension: typeof row.coord_dimension === "number"
+            ? row.coord_dimension
+            : (Number.isFinite(Number(row.coord_dimension)) ? Number(row.coord_dimension) : row.coord_dimension.length),
           srid: row.srid, spatialIndexEnabled: Boolean(row.spatial_index_enabled),
         });
       } else {
@@ -216,28 +247,70 @@ export class SpatialiteDatabase {
   private *readFeatures(table: string, column: string, limit: number | undefined, options: GeoJsonReadOptions): Generator<Feature<Geometry | null>> {
     this.assertIdle();
     options.signal?.throwIfAborted();
+    const normalized = normalizeFeatureOptions(options);
     if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 0)) throw new Error("Invalid feature limit.");
-    // Resolve/cache projections before starting the cursor (query() rejects concurrent SQL).
-    const metadata = this.getGeometryColumns().find((col) => col.tableName.toLowerCase() === table.toLowerCase() && col.columnName.toLowerCase() === column.toLowerCase());
-    if (metadata && metadata.srid !== 4326 && metadata.srid > 0) this.projectGeometry({ type: "GeometryCollection", geometries: [] }, metadata.srid);
-    const selection = options.propertyColumns === undefined ? "*" : [...new Set([column, ...options.propertyColumns])].map(quoteIdentifier).join(", ");
-    const stmt = this.rawDb.prepare(`SELECT ${selection} FROM ${quoteIdentifier(table)}${limit === undefined ? "" : " LIMIT ?"}`);
-    if (limit !== undefined) stmt.bind([limit]);
-    const cols = stmt.getColumnNames();
-    const geomIndex = cols.findIndex((name) => name.toLowerCase() === column.toLowerCase());
-    // Give every row the same compact object shape, even for wide tables.
-    const propertyTemplate: Record<string, unknown> = Object.fromEntries(cols.filter((_, i) => i !== geomIndex).map((key) => [key, null]));
-    this.activeReaders += 1;
+    const tableName = this.getTableNames().find((name) => name.toLowerCase() === table.toLowerCase());
+    if (!tableName) throw new Error(`Table ${table} does not exist.`);
+    const schema = this.query<{ name: string }>("SELECT name FROM pragma_table_xinfo(?) WHERE hidden != 1 ORDER BY cid", [tableName]).map((row) => row.name);
+    const tableInfo = this.query<{ type: string; sql: string | null }>(
+      "SELECT type, sql FROM main.sqlite_master WHERE name = ? COLLATE NOCASE LIMIT 1", [tableName],
+    )[0];
+    const rowIdColumn = tableInfo?.type === "table" && !/\bWITHOUT\s+ROWID\b/i.test(tableInfo.sql ?? "")
+      ? ["_rowid_", "rowid", "oid"].find((candidate) => !schema.some((name) => name.toLowerCase() === candidate)) ?? null
+      : null;
+    const metadata = this.getGeometryColumns().find((col) => col.tableName.toLowerCase() === tableName.toLowerCase() && col.columnName.toLowerCase() === column.toLowerCase());
+    const geometryColumn = schema.find((name) => name.toLowerCase() === column.toLowerCase());
+    if (!geometryColumn) throw new Error(`Geometry column ${column} does not exist in ${table}.`);
+    const srid = metadata?.srid ?? 0;
+    let spatialIndexTable: string | null = null;
+    let useSpatialIndex = false;
+    if (normalized.bbox && metadata?.spatialIndexEnabled && rowIdColumn && srid > 0) {
+      const indexName = `idx_${tableName}_${geometryColumn}`;
+      const object = this.query<{ type: string; sql: string | null }>(
+        "SELECT type, sql FROM main.sqlite_master WHERE name = ? COLLATE NOCASE LIMIT 1", [indexName],
+      )[0];
+      if (validSpatialIndexObject(object?.type, object?.sql)) {
+        try {
+          const indexColumns = this.query<{ name: string }>("SELECT name FROM pragma_table_info(?)", [indexName]).map((row) => row.name.toLowerCase());
+          useSpatialIndex = ["pkid", "xmin", "xmax", "ymin", "ymax"].every((name) => indexColumns.includes(name));
+          if (useSpatialIndex) spatialIndexTable = indexName;
+        } catch { useSpatialIndex = false; }
+      }
+    }
+    if (options.requireSpatialIndex && !useSpatialIndex) {
+      throw new Error(`A valid SpatiaLite spatial index is required for ${tableName}.${geometryColumn}.`);
+    }
+    if (limit === 0) return;
+    const plan = buildFeatureReadPlan({
+      table: tableName, geometryColumn, schemaColumns: schema,
+      ...(options.propertyColumns === undefined ? {} : { propertyColumns: options.propertyColumns }),
+      ...(options.filters === undefined ? {} : { filters: options.filters }),
+      bbox: normalized.bbox, srid, useSpatialIndex, rowIdColumn, spatialIndexTable,
+      ...(limit === undefined ? {} : { limit }),
+    });
+    if (srid > 0 && srid !== 4326) this.projectGeometry({ type: "GeometryCollection", geometries: [] }, srid);
+    let stmt: IStatementBackend | null = null;
+    let active = false;
+    let yielded = 0;
     try {
-      if (geomIndex < 0) throw new Error(`Geometry column ${column} does not exist in ${table}.`);
+      stmt = this.rawDb.prepare(plan.sql);
+      if (plan.params.length) stmt.bind(plan.params);
+      const cols = stmt.getColumnNames();
+      const geomIndex = cols.findIndex((name) => name === plan.geometryAlias);
+      const propIndices = plan.propertyAliases.map((alias) => cols.findIndex((name) => name === alias));
+      if (geomIndex < 0 || propIndices.some((index) => index < 0)) throw new Error("SQLite returned an unexpected feature result shape.");
+      const propertyTemplate: Record<string, unknown> = Object.fromEntries(plan.propertyColumns.map((key) => [key, null]));
+      this.activeReaders += 1;
+      active = true;
       while (stmt.step()) {
         options.signal?.throwIfAborted();
         const values = stmt.get();
         const blob = values[geomIndex];
         let geometry: Geometry | null = null;
         if (blob !== null) {
-          if (!(blob instanceof Uint8Array)) throw new Error(`Geometry column ${column} contains a non-BLOB value.`);
+          if (!(blob instanceof Uint8Array)) throw new Error(`Geometry column ${geometryColumn} contains a non-BLOB value.`);
           const decoded = decodeSpatialiteGeometry(blob);
+          if (normalized.bbox && !geometryEnvelopeIntersects(geometryEnvelope(decoded.geometry), normalized.bbox)) continue;
           // Plain SQLite can contain projected BLOBs without geometry_columns.
           if (decoded.srid !== 4326 && !this.projections.has(decoded.srid)) {
             this.activeReaders -= 1;
@@ -245,38 +318,57 @@ export class SpatialiteDatabase {
             finally { this.activeReaders += 1; }
           }
           geometry = this.projectGeometry(decoded.geometry, decoded.srid);
-        }
+        } else if (normalized.bbox) continue;
         const properties: Record<string, unknown> = { ...propertyTemplate };
-        for (let i = 0; i < cols.length; i += 1) {
-          const key = cols[i];
-          if (i === geomIndex || key === undefined) continue;
-          const val = values[i];
-          const value = val instanceof Uint8Array ? `[BLOB ${val.length} bytes]` : val;
-          properties[key] = value;
-        }
+        plan.propertyColumns.forEach((key, index) => {
+          const propertyIndex = propIndices[index];
+          if (propertyIndex === undefined) throw new Error("SQLite returned an unexpected feature property shape.");
+          const val = values[propertyIndex];
+          const value = val instanceof Uint8Array ? `[BLOB ${val.length} bytes]` : typeof val === "bigint" ? val.toString() : val;
+          properties[key] = value ?? null;
+        });
         yield { type: "Feature", geometry, properties };
+        yielded += 1;
+        if (limit !== undefined && yielded >= limit) return;
       }
-    } finally { stmt.free(); this.activeReaders -= 1; }
+    } finally { stmt?.free(); if (active) this.activeReaders -= 1; }
   }
 
   getTableGeoJson(table: string, column = "geometry", limit?: number, options: GeoJsonReadOptions = {}): FeatureCollection<Geometry | null> {
     return { type: "FeatureCollection", features: [...this.readFeatures(table, column, limit, options)] };
   }
 
-  async getTableGeoJsonAsync(table: string, column = "geometry", limit?: number, options: GeoJsonReadOptions = {}): Promise<FeatureCollection<Geometry | null>> {
-    const features: Feature<Geometry | null>[] = [];
+  async *streamTableGeoJson(
+    table: string, column = "geometry", limit?: number, options: GeoJsonReadOptions = {},
+  ): AsyncIterableIterator<Feature<Geometry | null>[]> {
+    const { batchSize } = normalizeFeatureOptions(options);
+    let batch: Feature<Geometry | null>[] = [];
     let deadline = performance.now() + 16;
     for (const feature of this.readFeatures(table, column, limit, options)) {
-      features.push(feature);
-      if (features.length % 256 === 0 && performance.now() >= deadline) {
-        options.onProgress?.(features.length);
-        await yieldToBrowser();
-        options.signal?.throwIfAborted();
-        deadline = performance.now() + 16;
+      batch.push(feature);
+      if (batch.length >= batchSize) {
+        yield batch;
+        batch = [];
+        if (performance.now() >= deadline) {
+          await yieldToBrowser();
+          options.signal?.throwIfAborted();
+          deadline = performance.now() + 16;
+        }
       }
     }
+    if (batch.length) yield batch;
+  }
+
+  async getTableGeoJsonAsync(table: string, column = "geometry", limit?: number, options: GeoJsonReadOptions = {}): Promise<FeatureCollection<Geometry | null>> {
+    const features: Feature<Geometry | null>[] = [];
+    let lastProgress = -1;
+    for await (const batch of this.streamTableGeoJson(table, column, limit, options)) {
+      features.push(...batch);
+      options.onProgress?.(features.length);
+      lastProgress = features.length;
+    }
     options.signal?.throwIfAborted();
-    options.onProgress?.(features.length);
+    if (lastProgress !== features.length) options.onProgress?.(features.length);
     return { type: "FeatureCollection", features };
   }
 

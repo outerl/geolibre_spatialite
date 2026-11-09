@@ -9,6 +9,7 @@ export default tseslint.config(
       "dist/**",
       "geolibre-plugin/dist/**",
       "node_modules/**",
+      "src/wasm/**",
     ],
   },
   eslint.configs.recommended,
@@ -43,6 +44,12 @@ export default tseslint.config(
     files: ["scripts/*.mjs"],
     languageOptions: {
       globals: globals.node,
+    },
+  },
+  {
+    files: ["scripts/native-browser-fixture.mjs", "scripts/benchmark-paged-browser.mjs"],
+    languageOptions: {
+      globals: globals.browser,
     },
   },
 );

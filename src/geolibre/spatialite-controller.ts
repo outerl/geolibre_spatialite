@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (c) 2026 Outer Loop Consulting
+
 import type { GeoLibreAppAPI } from "./host-api.js";
 import { SpatialiteDatabase, type SqlRow } from "../spatialite/database.js";
 import { addSpatialiteLayerToMap } from "./layer-manager.js";
@@ -53,6 +56,7 @@ export class SpatialiteController {
     this.loadAbort?.abort();
     const db = this.db;
     this.db = null;
+    this.lastQueryResult = null;
     this.container = null;
     if (this.loadTask) void this.loadTask.finally(() => db?.close());
     else db?.close();
@@ -67,7 +71,7 @@ export class SpatialiteController {
     if (typeof window !== "undefined" && "showOpenFilePicker" in window) {
       try {
         const picker = window.showOpenFilePicker as (options?: unknown) => Promise<FileSystemFileHandle[]>;
-        const [handle] = await picker({
+        const [handle] = await picker.call(window, {
           types: [
             {
               description: "SQLite / SpatiaLite Database (*.sqlite, *.db, *.spatialite)",
@@ -115,9 +119,10 @@ export class SpatialiteController {
     // Header
     const header = document.createElement("div");
     header.className = "spatialite-header";
+    const engineLabel = this.db?.isNativeC ? `Native C WASM (v${this.db.getSpatialiteVersion()})` : "Spatial SQL Engine";
     header.innerHTML = `
       <h3 class="spatialite-title">SpatiaLite</h3>
-      <p class="spatialite-subtitle">Spatial SQL Database Engine</p>
+      <p class="spatialite-subtitle">${engineLabel}</p>
     `;
     panel.appendChild(header);
 
@@ -136,7 +141,8 @@ export class SpatialiteController {
     if (this.db) {
       const statusAlert = document.createElement("div");
       statusAlert.className = "spatialite-alert spatialite-alert-info";
-      statusAlert.textContent = `Connected: ${this.currentDbName}`;
+      const engineInfo = this.db.isNativeC ? ` (C WASM v${this.db.getSpatialiteVersion()})` : "";
+      statusAlert.textContent = `Connected: ${this.currentDbName}${engineInfo}`;
       dbSection.appendChild(statusAlert);
     }
     panel.appendChild(dbSection);
@@ -354,14 +360,15 @@ export class SpatialiteController {
   private exportDatabase(): void {
     if (!this.db) return;
     try {
-    const bytes = this.db.export();
-    const blob = new Blob([new Uint8Array(bytes)], { type: "application/x-sqlite3" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = this.currentDbName || "database.sqlite";
-    a.click();
-    setTimeout(() => { URL.revokeObjectURL(url); }, 0);
+      const bytes = this.db.export();
+      const view = new Uint8Array(bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength);
+      const blob = new Blob([view], { type: "application/x-sqlite3" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = this.currentDbName || "database.sqlite";
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); }, 0);
     } catch (error) { this.showError(error); }
   }
 }

@@ -1,0 +1,2 @@
+*.sh text eol=lf
+build-wasm/Dockerfile text eol=lf

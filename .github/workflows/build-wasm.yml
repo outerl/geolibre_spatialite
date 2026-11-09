@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+name: Build Native C SpatiaLite WebAssembly
+on:
+  workflow_dispatch:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  build-c-wasm:
+    name: Compile and test native SpatiaLite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Check source before native compilation
+        run: npm run check:source
+      - uses: docker/setup-buildx-action@v3
+      - name: Build self-contained native runtime and projection resources
+        run: npm run build:wasm
+      - name: Build the production library and plugin
+        run: npm run build
+      - name: Exercise real SQLite, SpatiaLite, GEOS, PROJ, spatial indexes and export
+        run: npm run test:native
+      - name: Exercise paged file reads and spatial queries in a real browser worker
+        run: npm run test:native:browser
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spatialite-native-${{ github.sha }}
+          path: src/wasm/
+          if-no-files-found: error
+          retention-days: 30

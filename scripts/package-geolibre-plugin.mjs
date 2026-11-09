@@ -1,8 +1,12 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (c) 2026 Outer Loop Consulting
+
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateRawSync } from "node:zlib";
+import { readNativeArtifacts } from "../build/native-artifacts.ts";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const bundleDir = join(rootDir, "geolibre-plugin");
@@ -10,6 +14,8 @@ const distDir = join(bundleDir, "dist");
 const manifestPath = join(bundleDir, "plugin.json");
 const generatedManifestPath = join(distDir, "plugin.json");
 const crcTable = createCrcTable();
+const nativeDir = join(rootDir, "src", "wasm");
+const nativeInfo = readNativeArtifacts(nativeDir);
 
 await mkdir(distDir, { recursive: true });
 
@@ -30,6 +36,7 @@ const entries = [
 if (manifest.style) entries.push([manifest.style, join(bundleDir, manifest.style)]);
 for (const name of ["LICENSE", "THIRD_PARTY_NOTICES.md"]) entries.push([name, join(rootDir, name)]);
 const dependencies = {};
+Object.assign(dependencies, nativeInfo.components);
 for (const [name, license] of [["sql.js", "LICENSE"], ["proj4", "LICENSE.md"], ["mgrs", "license.md"], ["wkt-parser", "LICENSE.md"]]) {
   entries.push([`licenses/${name}.txt`, join(rootDir, "node_modules", name, license)]);
   dependencies[name] = JSON.parse(await readFile(join(rootDir, "node_modules", name, "package.json"), "utf8")).version;
@@ -37,10 +44,14 @@ for (const [name, license] of [["sql.js", "LICENSE"], ["proj4", "LICENSE.md"], [
 const dependencyPath = join(distDir, "DEPENDENCIES.json");
 await writeFile(dependencyPath, JSON.stringify(dependencies, null, 2) + "\n");
 entries.push(["DEPENDENCIES.json", dependencyPath]);
-for (const directory of ["src", "build", "scripts", "tests", "docs", "geolibre-plugin"]) {
+entries.push(["NATIVE_BUILD_INFO.json", join(nativeDir, "build-info.json")]);
+for (const name of Object.keys(nativeInfo.files).filter((name) => name.startsWith("licenses/") || name.startsWith("sources/"))) {
+  entries.push([name, join(nativeDir, name)]);
+}
+for (const directory of ["src", "build", "build-wasm", "scripts", "tests", "docs", "geolibre-plugin"]) {
   await addSources(directory);
 }
-for (const name of ["package.json", "package-lock.json", "tsconfig.json", "tsconfig.build.json", "vite.config.ts", "vite.geolibre.config.ts", "vitest.config.ts", "eslint.config.js", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md"]) {
+for (const name of ["package.json", "package-lock.json", "tsconfig.json", "tsconfig.build.json", "vite.config.ts", "vite.geolibre.config.ts", "vitest.config.ts", "eslint.config.js", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", ".dockerignore", ".gitattributes"]) {
   entries.push([`source/${name}`, join(rootDir, name)]);
 }
 entries.sort(([a], [b]) => a.localeCompare(b, "en"));
@@ -53,6 +64,10 @@ await writeFile(
 console.log(`Created ${outputPath}`);
 
 async function addSources(directory) {
+  if (directory === "src/wasm") {
+    for (const name of ["build-info.json", ...Object.keys(nativeInfo.files)]) entries.push([`source/src/wasm/${name}`, join(nativeDir, name)]);
+    return;
+  }
   for (const entry of await readdir(join(rootDir, directory), { withFileTypes: true })) {
     if (entry.name === "dist") continue;
     const name = `${directory}/${entry.name}`;

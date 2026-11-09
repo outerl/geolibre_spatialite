@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
   pull_request:
     branches:
       - main
@@ -16,7 +18,32 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint TypeScript and JavaScript
+        run: npm run lint
+
+  native:
+    name: Build and verify native runtime
+    needs: lint
+    uses: ./.github/workflows/build-wasm.yml
+
   test:
+    needs: native
     name: Test (${{ matrix.os }} / Node ${{ matrix.node-version }})
     runs-on: ${{ matrix.os }}
     strategy:
@@ -43,8 +70,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run linter
-        run: npm run lint
+      - name: Download tested native runtime and corresponding sources
+        uses: actions/download-artifact@v4
+        with:
+          name: spatialite-native-${{ github.sha }}
+          path: src/wasm
 
       - name: Run TypeScript typecheck
         run: npm run typecheck
@@ -52,8 +82,14 @@ jobs:
       - name: Run test suite with coverage
         run: npm test
 
+      - name: Test development server boundaries
+        run: npm run test:scripts
+
       - name: Build library and plugin bundles
         run: npm run build
+
+      - name: Test compiled native engine
+        run: npm run test:native
 
   package:
     name: Package & Verify (${{ matrix.os }})
@@ -79,11 +115,21 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Download tested native runtime and corresponding sources
+        uses: actions/download-artifact@v4
+        with:
+          name: spatialite-native-${{ github.sha }}
+          path: src/wasm
+
       - name: Build installable plugin archive
         run: npm run package:geolibre
 
       - name: Verify package checksum and integrity
         run: npm run test:package
+
+      - name: Verify packaged paged worker in Chromium
+        if: matrix.os == 'ubuntu-latest'
+        run: npm run test:native:browser -- --package
 
       - name: Upload plugin archive and checksum artifact
         if: matrix.os == 'ubuntu-latest' && github.event_name == 'push' && github.ref == 'refs/heads/main'

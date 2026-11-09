@@ -1,9 +1,21 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (c) 2026 Outer Loop Consulting
+
 export * from "./spatialite/blob-codec.js";
+export {
+  NativeCDatabase,
+  NativeCStatement,
+  type IDatabaseBackend,
+  type IStatementBackend,
+  type SpatialiteWasmModule,
+} from "./spatialite/c-wasm-adapter.js";
 export * from "./spatialite/geodesic.js";
 export * from "./spatialite/spatial-functions.js";
 export * from "./spatialite/spatial-index.js";
 export * from "./spatialite/sqlite-engine.js";
 export * from "./spatialite/database.js";
+export * from "./spatialite/feature-read-plan.js";
+export * from "./spatialite/paged-connection.js";
 export * from "./api/types.js";
 export * from "./api/service.js";
 export { plugin as default, plugin, PLUGIN_ID, PLUGIN_NAME, PLUGIN_VERSION } from "./geolibre.js";

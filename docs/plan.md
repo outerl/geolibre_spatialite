@@ -1,114 +1,88 @@
-# GeoLibre SpatiaLite Plugin Implementation Plan
+# Native runtime release work
 
-## 1. Project Overview & Objectives
+The production path now bundles upstream SpatiaLite/GEOS/PROJ/SQLite. It requires checksummed native artifacts; source-test fallback code cannot produce a release on its own.
 
-**Target Repository**: `D:\OL\src\geolibre_spatialite`  
-**License**: LGPL-2.1 (compliant with SpatiaLite / GEOS ecosystem while permitting dynamic linking by MIT host/consumer plugins)  
-**Target Environments**: GeoLibre Web (Chromium, Firefox, Safari) and GeoLibre Desktop (Tauri/WebView)
+Review issues addressed:
 
-### Primary Objectives:
-1. **SpatiaLite Spatial SQL Engine**: Provide a standalone, in-browser SQLite + SpatiaLite runtime with full support for SpatiaLite BLOB geometry encoding, spatial functions, and spatial index lookups.
-2. **First-Class GeoLibre UI**: Offer a database manager right panel, spatial SQL console with interactive result previews, and one-click layer loading into the GeoLibre map.
-3. **Inter-Plugin Service Provider for AequilibraE**: Expose a typed, stable service (`window.geolibreSpatialite` and `app.registerService`) allowing consumer plugins to run transactions and execute AequilibraE network triggers (`StartPoint`, `EndPoint`, `GeodesicLength`, `SetStartPoint`, `SpatialIndex`) seamlessly.
-4. **Official Plugin Store Submission**: Deliver the exact manifest, metadata, packaging scripts, and contribution documentation required to list the plugin in the curated GeoLibre plugin registry (`plugins.geolibre.app/plugin-registry.json`).
+1. Native runtime selection and packaging: import the self-contained compiled module automatically, fail on missing/stale artifacts, and require native execution in the ZIP smoke test.
+2. Cross-build prerequisites: target SQLite and pkg-config metadata precede PROJ; host sqlite3 generates proj.db; target zlib and explicit GEOS/static C++ linkage support SpatiaLite configuration.
+3. Artifact layout: export the artifact-stage root directly to src/wasm; the local script uses Buildx export instead of creating an unusable scratch container.
+4. SQL execution: execute every unbound statement, support bound exec results, and reject multiple statements in a parameterized query before executing it.
+5. Integer fidelity: build with WASM_BIGINT=1, bind/read i64 without Number conversion, and retain safe integers as ordinary numbers.
+6. Export: use SQLite serialization to include committed WAL pages; emit a standalone rollback-format image and reject unfinished transactions/statements.
+7. Binding: reset and clear previous values, preserve empty BLOBs and embedded NUL text, and surface binding/range errors.
+8. Lifetime management: free SQL buffers on completion/error/early exit, finalize statements on close, and clean up failed opening/initialization.
+9. Projection resources: embed proj.db at the native search path and test a real EPSG transformation.
 
----
+Validation paths:
 
-## 2. Architecture & File Layout
+- npm run check:source: source lint/type checks, regression tests including the adapter against real SQLite WASM, and development-server tests.
+- npm run check: additionally requires native artifacts, builds both production bundles, and runs the compiled-engine integration tests.
+- npm run test:package: checks the ZIP and asserts native SpatiaLite/GEOS/PROJ execution offline through its actual entry point.
 
-```
-D:\OL\src\geolibre_spatialite\
-├── .github/
-│   └── workflows/
-│       └── ci.yml                      # Automated lint, test, build, packaging verification
-├── build/
-│   └── inline-sql-wasm-plugin.ts       # Inlines SQLite WASM binary for zero-network execution
-├── docs/
-│   ├── plan.md                         # Detailed technical implementation blueprint
-│   ├── geolibre-plugin-store-submission.md # Submission guide for opengeos/GeoLibre registry
-│   ├── inter-plugin-guide.md           # API guide for consumer plugins (e.g., AequilibraE)
-│   └── c-wasm-compilation.md           # Full C libspatialite Emscripten compilation guide
-├── geolibre-plugin/
-│   ├── plugin.json                     # Official GeoLibre plugin manifest
-│   └── dist/                           # Built bundle (index.js, style.css, ZIP archive)
-├── scripts/
-│   ├── package-geolibre-plugin.mjs     # Creates deterministic ZIP and SHA-256 digest
-│   └── serve-geolibre-plugin.mjs       # Local testing dev server
-├── src/
-│   ├── api/
-│   │   ├── types.ts                    # Public TypeScript contracts for inter-plugin usage
-│   │   └── service.ts                  # Global service registration (window.geolibreSpatialite)
-│   ├── geolibre/
-│   │   ├── host-api.ts                 # GeoLibre host application interface definition
-│   │   ├── plugin.css                  # UI styling (dark/light mode compatible)
-│   │   ├── spatialite-controller.ts    # DOM controller for DB explorer & SQL console
-│   │   └── layer-manager.ts            # Bridges SpatiaLite query results to GeoLibre map
-│   ├── spatialite/
-│   │   ├── blob-codec.ts               # Pure TS encoder/decoder for SpatiaLite BLOBs (Point, Line, Poly)
-│   │   ├── geodesic.ts                 # Vincenty/Haversine geodesic length and distance math
-│   │   ├── spatial-functions.ts        # Comprehensive SpatiaLite UDF suite for SQLite WASM
-│   │   ├── spatial-index.ts            # SpatialIndex virtual table / R*Tree trigger emulation
-│   │   └── database.ts                 # High-level database wrapper with transaction support
-│   ├── geolibre.ts                     # Plugin entry point (GeoLibre plugin lifecycle)
-│   └── index.ts                        # Library entry point (npm consumption)
-├── tests/
-│   ├── blob-codec.test.ts              # SpatiaLite BLOB binary tests
-│   ├── geodesic.test.ts                # Geodesic calculation tests
-│   ├── spatial-functions.test.ts       # Spatial SQL UDF tests (StartPoint, GeodesicLength, etc.)
-│   ├── aequilibrae-triggers.test.ts    # Integration test executing real AequilibraE SQL triggers!
-│   ├── database.test.ts                # Database wrapper & transaction tests
-│   └── geolibre-plugin.test.ts         # Plugin lifecycle and UI controller tests
-├── eslint.config.js
-├── LICENSE
-├── package.json
-├── README.md
-├── tsconfig.build.json
-├── tsconfig.json
-├── vite.config.ts
-├── vite.geolibre.config.ts
-└── vitest.config.ts
-```
+CI builds the native artifact first and runs native SQL, GEOS, PROJ, native spatial-index/constraint triggers, exact integers, allocation cleanup, and WAL export/reopen before the platform matrix can package a release. The same tested artifact is reused across jobs.
 
----
+Native compilation and live GeoLibre host installation must still be observed successfully in the build environment. A source-only pass is not a native release certification. Earlier performance figures refer to the previous sql.js engine; native measurements must be repeated before making performance claims.
 
-## 3. Subagent Work Breakdown & Execution Strategy
+## Large-file backend and selective reads
 
-Tasks are partitioned across specialized subagents:
+Goal: let consumer plugins read large local SpatiaLite files without first copying
+the whole file into JavaScript/WASM memory. Keep AequilibraE's existing reader in
+place until equivalent end-to-end benchmarks justify migration. Complete-network
+flow maps still require all links, so paging is a memory/startup improvement, not
+a promise of faster full-network conversion.
 
-### Agent 1: Project Scaffolding & Build System
-- Initialize `package.json`, `tsconfig.json`, `tsconfig.build.json`, `eslint.config.js`, `vitest.config.ts`.
-- Set up Vite configs (`vite.config.ts` and `vite.geolibre.config.ts`) with `inline-sql-wasm-plugin.ts`.
-- Create `scripts/package-geolibre-plugin.mjs` and `geolibre-plugin/plugin.json`.
-- Create `.github/workflows/ci.yml`.
+### Implementation order
 
-### Agent 2: Core SpatiaLite Engine & AequilibraE Trigger Support
-- Implement `blob-codec.ts` (SpatiaLite binary specification: Point, LineString, Polygon, MultiPolygon, MBR, SRID, WKB).
-- Implement `geodesic.ts` (Geodesic distance, length calculations for EPSG:4326).
-- Implement `spatial-functions.ts` (Registering UDFs into SQLite WASM: `StartPoint`, `EndPoint`, `SetStartPoint`, `SetEndPoint`, `GeodesicLength`, `GeomFromWKB`, `ST_AsBinary`, `ST_AsText`, etc.).
-- Implement `spatial-index.ts` (Emulating / integrating `SpatialIndex` table for `search_frame` point queries).
-- Implement `database.ts` (Connection management, transactions, table metadata, querying).
-- Write comprehensive test suites including a dedicated integration test for AequilibraE network triggers (`BEFORE/AFTER INSERT/UPDATE/DELETE`).
+1. Preserve the native compilation/integration/package gates above. Native build
+   verification is a release prerequisite; develop and test the new source path
+   while local Docker permissions remain unavailable.
+2. Add a separate asynchronous, read-only `openFile(Blob, options)` service API.
+   Keep the current synchronous byte-backed connection API compatible for editing
+   and small databases. Fail explicitly when workers or the required native
+   filesystem support are unavailable; never silently load the entire file.
+3. Mount the Blob in a dedicated Web Worker using Emscripten WORKERFS. This exposes
+   sliced synchronous file reads to SQLite without a whole-file import. Open with
+   SQLite's read-only flags, disable mmap, and configure a bounded SQLite page
+   cache (default 32 MiB). The cache is not a limit on total WASM, query/sort, or
+   result memory. Do not duplicate AequilibraE's SQLite file parser.
+4. Keep worker code self-contained in the offline release. Add required native
+   exports, filesystem linkage, and artifact capability validation so an older
+   compiled module cannot masquerade as a paged-capable runtime. Clean up mounts,
+   statements, worker promises, and workers on failures and close. Reject files
+   requiring WAL/journal recovery rather than silently omitting sidecar changes.
+5. Add parameterized bounded queries and pull-based row/feature batches with
+   backpressure. Include cancellation and early iterator-return cleanup. A hard
+   cancellation may terminate the read-only connection to interrupt SQLite that
+   is busy inside one step; document that consumers reopen it afterward. Keep
+   synchronous transactions/writes/export out of the paged API.
+6. Add shared selective feature reads: selected property columns, validated
+   bounding boxes in the layer's source CRS, bound attribute predicates, limits,
+   and optional streaming batches. Explicitly use a valid existing spatial index
+   where available; offer a clear required-index mode and a correct scan fallback.
+   State whether bounding boxes select envelope candidates or exact intersections.
+   Continue producing WGS84 GeoJSON and preserving exact large integer attributes.
+7. Document the public API, cache/lifecycle/cancellation behavior, bounding-box
+   semantics, offline worker requirements, and consistent-snapshot requirement.
+   Do not migrate or edit the AequilibraE plugin as part of this work.
 
-### Agent 3: GeoLibre UI Controller & Inter-Plugin Service
-- Implement `host-api.ts` and `src/api/types.ts`, `src/api/service.ts`.
-- Implement `spatialite-controller.ts` (Panel UI: file loading, table viewer, SQL console, error reporting).
-- Implement `layer-manager.ts` (Map rendering, GeoJSON conversion, selection).
-- Implement `src/geolibre/plugin.css`.
-- Implement `src/geolibre.ts` (Lifecycle hooks: activate, menu, panel registration).
+### Acceptance and review
 
-### Agent 4: Documentation & GeoLibre Store Contribution Deliverables
-- Write `README.md` (Overview, features, store listing description).
-- Write `LICENSE` (LGPL-2.1).
-- Write `docs/geolibre-plugin-store-submission.md` (PR instructions for `opengeos/GeoLibre` and `plugin-registry.json`).
-- Write `docs/inter-plugin-guide.md` (Step-by-step for AequilibraE plugin to call SpatiaLite).
-- Write `docs/c-wasm-compilation.md` (Compiling upstream C SpatiaLite with Emscripten).
-- Write `docs/plan.md`.
+- Source tests must cover actual SQLite query/filter results, index/scan parity,
+  selected columns, exact integers, malformed options, batching/backpressure,
+  cancellation, early exit, failed open, and close. Test filesystem reads do not
+  call `arrayBuffer()` on the full file or write its bytes into MEMFS.
+- The compiled-native gate must exercise real WORKERFS in a browser worker with
+  an actual file, native spatial-index selection, source immutability, offline
+  startup, and cleanup. Test doubles do not certify the filesystem/worker ABI.
+- Add a reproducible benchmark separating runtime startup, file open, selective
+  reads, full-layer conversion, and memory/read-volume measurements. Compare
+  equivalent features/attributes; record the backend and file/feature counts.
+  Preserve historical measurements and publish no unmeasured native speedup.
+- The primary agent reviews implementation and tests independently after the
+  requested Luna extra-high-effort implementation pass, runs available checks,
+  and records any remaining native/browser verification blocker.
 
----
-
-## 4. Verification & Quality Gates
-
-1. **Static Analysis**: `npm run lint` and `npm run typecheck` with 0 warnings.
-2. **Unit & Integration Tests**: `npm test` verifying 100% of spatial functions and real trigger execution.
-3. **Packaging**: `npm run package:geolibre` producing a verified `.zip` and `.sha256.json`.
-4. **Smoke Testing**: Verifying the packaged zip and manifest structure against GeoLibre plugin specifications.
+Design references: [Emscripten WORKERFS](https://emscripten.org/docs/api_reference/Filesystem-API.html#workerfs),
+[SQLite read-only opening](https://www.sqlite.org/c3ref/open.html), and
+[SQLite page-cache sizing](https://www.sqlite.org/pragma.html#pragma_cache_size).

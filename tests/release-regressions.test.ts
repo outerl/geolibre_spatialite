@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (c) 2026 Outer Loop Consulting
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Geometry } from "geojson";
 import { SpatialiteDatabase } from "../src/spatialite/database.js";
@@ -51,6 +54,19 @@ describe("release regressions", () => {
       expect(db.query('SELECT * FROM "odd""table"')).toHaveLength(1);
     });
     expect(() => db.transaction(() => Promise.resolve(1))).toThrow("synchronous");
+  });
+
+  it("invalidates legacy geometry metadata even when a later SQL statement fails", async () => {
+    const db = await open();
+    db.exec("CREATE TABLE geometry_columns(f_table_name TEXT, f_geometry_column TEXT, type TEXT, coord_dimension TEXT, srid INT, spatial_index_enabled INT); INSERT INTO geometry_columns VALUES ('places','geometry','POINT','XY',0,0)");
+    expect(db.getGeometryColumns()[0]?.srid).toBe(0);
+    expect(() => { db.exec("UPDATE geometry_columns SET srid=7; SELECT * FROM missing_table"); }).toThrow();
+    expect(db.getGeometryColumns()[0]?.srid).toBe(7);
+    expect(() => db.executePreview("UPDATE geometry_columns SET srid=9; SELECT * FROM missing_table")).toThrow();
+    expect(db.getGeometryColumns()[0]?.srid).toBe(9);
+    db.query("UPDATE geometry_columns SET srid=11 RETURNING srid");
+    expect(db.getGeometryColumns()[0]?.srid).toBe(11);
+    expect(db.getGeometryColumns()[0]?.coordDimension).toBe(2);
   });
 
   it("reprojects known CRS and rejects unknown CRS or bad geometry rather than silently omitting it", async () => {
@@ -126,17 +142,31 @@ describe("release regressions", () => {
   });
 
   it("unregisters service and UI on deactivation and supports reactivation", () => {
-    const app: GeoLibreAppAPI = { addGeoJsonLayer: vi.fn(), registerRightPanel: vi.fn(() => vi.fn()), registerToolbarMenu: vi.fn(() => vi.fn()), unregisterService: vi.fn() };
-    // A preceding lifecycle test may have activated its own host.
-    plugin.deactivate?.(app);
-    // Use the public lifecycle on the current module after restoring its original host in that test.
+    const app: GeoLibreAppAPI = { addGeoJsonLayer: vi.fn(), registerRightPanel: vi.fn(() => vi.fn()), registerToolbarMenu: vi.fn(() => vi.fn()), registerService: vi.fn(), unregisterService: vi.fn() };
     const activated = plugin.activate(app);
     expect(activated).toBe(true);
-    plugin.deactivate?.(app);
+    plugin.deactivate(app);
     expect(window.geolibreSpatialite).toBeUndefined();
     expect(app.unregisterService).toHaveBeenCalledWith("spatialite");
     expect(plugin.activate(app)).toBe(true);
-    plugin.deactivate?.(app);
+    plugin.deactivate(app);
+  });
+
+  it("cleans up partial activation and closes an open that completes after disposal", async () => {
+    const dispose = vi.fn();
+    const app: GeoLibreAppAPI = {
+      addGeoJsonLayer: vi.fn(), registerRightPanel: () => dispose,
+      registerToolbarMenu: () => { throw new Error("host registration failed"); },
+    };
+    expect(() => plugin.activate(app)).toThrow("host registration failed");
+    expect(dispose).toHaveBeenCalled();
+    expect(window.geolibreSpatialite).toBeUndefined();
+    const controller = new SpatialiteController(app);
+    const pending = controller.openDatabaseFromBuffer(new Uint8Array());
+    controller.dispose();
+    await pending;
+    expect(controller.getDatabase()).toBeNull();
   });
 });
+
 

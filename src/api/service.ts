@@ -1,5 +1,11 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (c) 2026 Outer Loop Consulting
+
 import { SpatialiteDatabase } from "../spatialite/database.js";
-import type { GeoLibreSpatialiteService, ISpatialiteConnection } from "./types.js";
+import { PagedSpatialiteConnection } from "../spatialite/paged-connection.js";
+import { getActiveEngineType, getLoadedSpatialiteVersion, registerNativeSpatialiteFactory as registerFactory } from "../spatialite/sqlite-engine.js";
+import type { GeoLibreSpatialiteService, ISpatialiteConnection, PagedOpenOptions, IPagedSpatialiteConnection, SpatialiteEngineType } from "./types.js";
+import type { SpatialiteWasmModule } from "../spatialite/c-wasm-adapter.js";
 import { PLUGIN_VERSION } from "../version.js";
 
 class SpatialiteServiceImpl implements GeoLibreSpatialiteService {
@@ -9,8 +15,24 @@ class SpatialiteServiceImpl implements GeoLibreSpatialiteService {
     return true;
   }
 
+  getEngineType(): SpatialiteEngineType {
+    return getActiveEngineType();
+  }
+
+  getSpatialiteVersion(): string {
+    return getActiveEngineType() === "native-c-wasm" ? getLoadedSpatialiteVersion() : `${PLUGIN_VERSION} (inlined)`;
+  }
+
+  registerNativeSpatialiteFactory(factory: (() => Promise<SpatialiteWasmModule>) | null): void {
+    registerFactory(factory);
+  }
+
   async openDatabase(data?: Uint8Array | ArrayBuffer): Promise<ISpatialiteConnection> {
     return SpatialiteDatabase.open(data);
+  }
+
+  async openFile(blob: Blob, options?: PagedOpenOptions): Promise<IPagedSpatialiteConnection> {
+    return PagedSpatialiteConnection.open(blob, options);
   }
 
   async createDatabase(): Promise<ISpatialiteConnection> {

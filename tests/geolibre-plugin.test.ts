@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (c) 2026 Outer Loop Consulting
+
 import { describe, expect, it, vi } from "vitest";
 
 import { plugin, PLUGIN_ID, PLUGIN_NAME } from "../src/geolibre.js";
@@ -42,17 +45,28 @@ describe("GeoLibre SpatiaLite Plugin Lifecycle & UI", () => {
     expect(captures.service).toBeDefined();
     expect(window.geolibreSpatialite).toBeDefined();
     expect(window.geolibreSpatialite?.isReady()).toBe(true);
-    plugin.deactivate?.(mockApp);
+    plugin.deactivate(mockApp);
   });
 
   it("exposes functional openDatabase on global service", async () => {
     const service = getSpatialiteService();
+    expect(service.version).toBeDefined();
+    expect(service.isReady()).toBe(true);
+    expect(service.getEngineType()).toBe("inlined-sqlite-wasm");
+    expect(service.getSpatialiteVersion()).toContain("inlined");
+    service.registerNativeSpatialiteFactory?.(null);
+
     const conn = await service.createDatabase();
     conn.exec("CREATE TABLE test (val INT);");
     conn.exec("INSERT INTO test VALUES (42);");
     const rows = conn.query<{ val: number }>("SELECT val FROM test;");
     expect(rows[0]?.val).toBe(42);
+    const exported = conn.export();
     conn.close();
+
+    const reopened = await service.openDatabase(exported);
+    expect(reopened.query<{ val: number }>("SELECT val FROM test;")[0]?.val).toBe(42);
+    reopened.close();
   });
 
   it("renders SpatialiteController and executes queries through UI", async () => {
@@ -143,3 +157,4 @@ describe("GeoLibre SpatiaLite Plugin Lifecycle & UI", () => {
     expect(mockApp.fitBounds).toHaveBeenCalledWith([10, 20, 30, 40]);
   });
 });
+

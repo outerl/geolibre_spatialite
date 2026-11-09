@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (c) 2026 Outer Loop Consulting
+
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -43,7 +46,7 @@ assert.equal(offset, end, "Unexpected central directory length");
 const manifest = JSON.parse(files.get("plugin.json").toString("utf8"));
 assert.equal(manifest.id, pkg.name);
 assert.equal(manifest.version, pkg.version);
-for (const required of [manifest.entry, manifest.style, "LICENSE", "THIRD_PARTY_NOTICES.md", "DEPENDENCIES.json", "source/package-lock.json", "source/src/geolibre.ts", "source/build/inline-sql-wasm-plugin.ts"]) {
+for (const required of [manifest.entry, manifest.style, "LICENSE", "THIRD_PARTY_NOTICES.md", "DEPENDENCIES.json", "NATIVE_BUILD_INFO.json", "licenses/libspatialite.txt", "licenses/geos.txt", "licenses/proj.txt", "source/src/wasm/build-info.json", "source/src/wasm/spatialite.js", "source/src/wasm/proj.db", "source/package-lock.json", "source/src/geolibre.ts", "source/build/inline-sql-wasm-plugin.ts"]) {
   assert(files.has(required), `Missing package file: ${required}`);
 }
 
@@ -69,6 +72,12 @@ try {
   const service = dom.window.geolibreSpatialite;
   assert.equal(service.version, pkg.version);
   db = await service.createDatabase();
+  assert.equal(service.getEngineType(), "native-c-wasm", "ZIP silently used the fallback engine");
+  assert.equal(db.isNativeC, true);
+  assert.match(db.getSpatialiteVersion(), /^5\.1\.0/);
+  assert.equal(db.query("SELECT ST_Intersects(Buffer(MakePoint(0,0,4326),1),MakePoint(0,0,4326)) AS ok")[0].ok, 1);
+  db.query("SELECT InitSpatialMetaData(1)");
+  assert(Math.abs(db.query("SELECT X(Transform(MakePoint(10,0,4326),3857)) AS x")[0].x - 1113194.9079327357) < 0.01);
   db.exec("CREATE TABLE points(name TEXT, geometry BLOB)");
   db.exec("INSERT INTO points VALUES (?, MakePoint(?, ?, 4326))", ["Offline", 153, -27.5]);
   assert.deepEqual(db.getTableGeoJson("points").features[0]?.geometry, { type: "Point", coordinates: [153, -27.5] });

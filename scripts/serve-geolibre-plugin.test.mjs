@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (c) 2026 Outer Loop Consulting
+
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { request } from "node:http";

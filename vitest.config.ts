@@ -1,10 +1,12 @@
 import { defineConfig } from "vitest/config";
 
 import { inlineSqlWasmPlugin } from "./build/inline-sql-wasm-plugin.ts";
+import { nativeSpatialitePlugin } from "./build/native-spatialite-plugin.ts";
 
 export default defineConfig({
-  plugins: [inlineSqlWasmPlugin()],
+  plugins: [inlineSqlWasmPlugin(), nativeSpatialitePlugin({ testFallback: true })],
   test: {
+    include: ["tests/**/*.test.ts"],
     environment: "jsdom",
     exclude: ["**/node_modules/**", "**/dist/**"],
     coverage: {

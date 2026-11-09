@@ -1,6 +1,9 @@
+// SPDX-License-Identifier: LGPL-2.1-or-later
+// Copyright (c) 2026 Outer Loop Consulting
+
 import { createServer } from "node:http";
 import { readFile, realpath, stat } from "node:fs/promises";
-import { dirname, extname, isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, extname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -8,8 +11,8 @@ const bundleDir = await realpath(resolve(rootDir, "geolibre-plugin"));
 const port = Number(process.env.PORT || 4174);
 const mimeTypes = { ".js": "application/javascript", ".css": "text/css", ".json": "application/json", ".zip": "application/zip" };
 export function withinBundle(path) {
-  const rel = relative(bundleDir, path);
-  return rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+  const rel = relative(bundleDir, path).replaceAll("\\", "/");
+  return rel !== ".." && !rel.startsWith("../") && !isAbsolute(rel);
 }
 export const server = createServer(async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -18,8 +21,9 @@ export const server = createServer(async (req, res) => {
   if (req.method === "OPTIONS") { res.writeHead(204); res.end(); return; }
   if (req.method !== "GET" && req.method !== "HEAD") { res.writeHead(405); res.end(); return; }
   try {
-    const path = decodeURIComponent((req.url || "/").split("?")[0]);
-    const requested = resolve(bundleDir, path === "/" ? "plugin.json" : path.replace(/^\//, ""));
+    const rawPath = (req.url || "/").split("?")[0];
+    const decoded = decodeURIComponent(rawPath).replaceAll("\\", "/");
+    const requested = resolve(bundleDir, decoded === "/" ? "plugin.json" : decoded.replace(/^\/+/, ""));
     if (!withinBundle(requested)) { res.writeHead(403); res.end(); return; }
     const actual = await realpath(requested);
     if (!withinBundle(actual)) { res.writeHead(403); res.end(); return; }
