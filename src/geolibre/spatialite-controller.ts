@@ -354,14 +354,15 @@ export class SpatialiteController {
   private exportDatabase(): void {
     if (!this.db) return;
     try {
-    const bytes = this.db.export();
-    const blob = new Blob([new Uint8Array(bytes)], { type: "application/x-sqlite3" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = this.currentDbName || "database.sqlite";
-    a.click();
-    setTimeout(() => { URL.revokeObjectURL(url); }, 0);
+      const bytes = this.db.export();
+      const view = new Uint8Array(bytes.buffer as ArrayBuffer, bytes.byteOffset, bytes.byteLength);
+      const blob = new Blob([view], { type: "application/x-sqlite3" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = this.currentDbName || "database.sqlite";
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(url); }, 0);
     } catch (error) { this.showError(error); }
   }
 }

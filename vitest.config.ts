@@ -5,6 +5,7 @@ import { inlineSqlWasmPlugin } from "./build/inline-sql-wasm-plugin.ts";
 export default defineConfig({
   plugins: [inlineSqlWasmPlugin()],
   test: {
+    include: ["tests/**/*.test.ts"],
     environment: "jsdom",
     exclude: ["**/node_modules/**", "**/dist/**"],
     coverage: {

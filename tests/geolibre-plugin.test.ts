@@ -42,7 +42,7 @@ describe("GeoLibre SpatiaLite Plugin Lifecycle & UI", () => {
     expect(captures.service).toBeDefined();
     expect(window.geolibreSpatialite).toBeDefined();
     expect(window.geolibreSpatialite?.isReady()).toBe(true);
-    plugin.deactivate?.(mockApp);
+    plugin.deactivate(mockApp);
   });
 
   it("exposes functional openDatabase on global service", async () => {
@@ -143,3 +143,4 @@ describe("GeoLibre SpatiaLite Plugin Lifecycle & UI", () => {
     expect(mockApp.fitBounds).toHaveBeenCalledWith([10, 20, 30, 40]);
   });
 });
+

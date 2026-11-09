@@ -1,0 +1,148 @@
+{
+  "baseline": [
+    {
+      "table": "links",
+      "databaseMiB": 456.9296875,
+      "features": 451535,
+      "nonNullGeometries": 451535,
+      "runtimeMs": 5.6860000000000355,
+      "openMs": 275.88220000000007,
+      "metadata25Ms": 34.0643,
+      "layerMs": 3541.1310999999996,
+      "featureSha256": "1f5125a607bda2a3c159a79831c440858fdfad1ee322f917aece92a30c50e5d0",
+      "rssMiB": 3673.66015625,
+      "heapMiB": 2297.2770614624023,
+      "maxRssMiB": 3705.30859375
+    },
+    {
+      "table": "links",
+      "databaseMiB": 456.9296875,
+      "features": 451535,
+      "nonNullGeometries": 451535,
+      "runtimeMs": 6.253899999999987,
+      "openMs": 280.3708,
+      "metadata25Ms": 39.63810000000001,
+      "layerMs": 3793.1399,
+      "featureSha256": "1f5125a607bda2a3c159a79831c440858fdfad1ee322f917aece92a30c50e5d0",
+      "rssMiB": 3669.08203125,
+      "heapMiB": 2312.0890884399414,
+      "maxRssMiB": 3706.4609375
+    },
+    {
+      "table": "links",
+      "databaseMiB": 456.9296875,
+      "features": 451535,
+      "nonNullGeometries": 451535,
+      "runtimeMs": 5.729499999999973,
+      "openMs": 275.52570000000003,
+      "metadata25Ms": 33.22950000000003,
+      "layerMs": 3609.0646,
+      "featureSha256": "1f5125a607bda2a3c159a79831c440858fdfad1ee322f917aece92a30c50e5d0",
+      "rssMiB": 3668.05078125,
+      "heapMiB": 2313.0362548828125,
+      "maxRssMiB": 3705.9453125
+    }
+  ],
+  "current": [
+    {
+      "mode": "sync",
+      "table": "links",
+      "databaseMiB": 456.9296875,
+      "features": 451535,
+      "nonNullGeometries": 451535,
+      "runtimeMs": 5.9506000000000085,
+      "openMs": 9.03109999999998,
+      "metadata25Ms": 11.586600000000033,
+      "layerMs": 1251.3515,
+      "featureSha256": "1f5125a607bda2a3c159a79831c440858fdfad1ee322f917aece92a30c50e5d0",
+      "rssMiB": 1466.078125,
+      "heapMiB": 811.6582260131836,
+      "maxRssMiB": 1501.21875
+    },
+    {
+      "mode": "sync",
+      "table": "links",
+      "databaseMiB": 456.9296875,
+      "features": 451535,
+      "nonNullGeometries": 451535,
+      "runtimeMs": 5.825599999999952,
+      "openMs": 7.0686999999999784,
+      "metadata25Ms": 10.691499999999962,
+      "layerMs": 1228.2195000000002,
+      "featureSha256": "1f5125a607bda2a3c159a79831c440858fdfad1ee322f917aece92a30c50e5d0",
+      "rssMiB": 1479.0546875,
+      "heapMiB": 779.0739440917969,
+      "maxRssMiB": 1502.953125
+    },
+    {
+      "mode": "sync",
+      "table": "links",
+      "databaseMiB": 456.9296875,
+      "features": 451535,
+      "nonNullGeometries": 451535,
+      "runtimeMs": 6.019299999999987,
+      "openMs": 7.351599999999962,
+      "metadata25Ms": 10.600999999999999,
+      "layerMs": 1186.2347,
+      "featureSha256": "1f5125a607bda2a3c159a79831c440858fdfad1ee322f917aece92a30c50e5d0",
+      "rssMiB": 1470.484375,
+      "heapMiB": 799.4832916259766,
+      "maxRssMiB": 1501.80859375
+    }
+  ],
+  "async": [
+    {
+      "mode": "async",
+      "table": "links",
+      "databaseMiB": 456.9296875,
+      "features": 451535,
+      "nonNullGeometries": 451535,
+      "runtimeMs": 5.184499999999957,
+      "openMs": 7.6492000000000075,
+      "metadata25Ms": 10.796600000000012,
+      "layerMs": 1355.2138,
+      "featureSha256": "1f5125a607bda2a3c159a79831c440858fdfad1ee322f917aece92a30c50e5d0",
+      "rssMiB": 1461.47265625,
+      "heapMiB": 802.0840072631836,
+      "maxRssMiB": 1501.16796875
+    },
+    {
+      "mode": "async",
+      "table": "links",
+      "databaseMiB": 456.9296875,
+      "features": 451535,
+      "nonNullGeometries": 451535,
+      "runtimeMs": 5.706199999999967,
+      "openMs": 7.0726999999999975,
+      "metadata25Ms": 11.46289999999999,
+      "layerMs": 1401.2811,
+      "featureSha256": "1f5125a607bda2a3c159a79831c440858fdfad1ee322f917aece92a30c50e5d0",
+      "rssMiB": 1467.80078125,
+      "heapMiB": 789.4617767333984,
+      "maxRssMiB": 1501.68359375
+    },
+    {
+      "mode": "async",
+      "table": "links",
+      "databaseMiB": 456.9296875,
+      "features": 451535,
+      "nonNullGeometries": 451535,
+      "runtimeMs": 6.189000000000021,
+      "openMs": 7.441500000000019,
+      "metadata25Ms": 10.103800000000035,
+      "layerMs": 1314.3524,
+      "featureSha256": "1f5125a607bda2a3c159a79831c440858fdfad1ee322f917aece92a30c50e5d0",
+      "rssMiB": 1466.06640625,
+      "heapMiB": 802.4477844238281,
+      "maxRssMiB": 1501.19921875
+    }
+  ],
+  "environment": {
+    "os": "Windows-11-10.0.26300-SP0",
+    "node": "24.20.0",
+    "inputBytes": 479125504,
+    "features": 451535,
+    "repetitions": 3,
+    "notes": "Read-only benchmark. Disk I/O, module transforms, checksum computation, and map rendering excluded from timed conversion. Same pinned dependencies for both source versions."
+  }
+}

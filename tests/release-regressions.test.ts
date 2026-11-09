@@ -126,17 +126,31 @@ describe("release regressions", () => {
   });
 
   it("unregisters service and UI on deactivation and supports reactivation", () => {
-    const app: GeoLibreAppAPI = { addGeoJsonLayer: vi.fn(), registerRightPanel: vi.fn(() => vi.fn()), registerToolbarMenu: vi.fn(() => vi.fn()), unregisterService: vi.fn() };
-    // A preceding lifecycle test may have activated its own host.
-    plugin.deactivate?.(app);
-    // Use the public lifecycle on the current module after restoring its original host in that test.
+    const app: GeoLibreAppAPI = { addGeoJsonLayer: vi.fn(), registerRightPanel: vi.fn(() => vi.fn()), registerToolbarMenu: vi.fn(() => vi.fn()), registerService: vi.fn(), unregisterService: vi.fn() };
     const activated = plugin.activate(app);
     expect(activated).toBe(true);
-    plugin.deactivate?.(app);
+    plugin.deactivate(app);
     expect(window.geolibreSpatialite).toBeUndefined();
     expect(app.unregisterService).toHaveBeenCalledWith("spatialite");
     expect(plugin.activate(app)).toBe(true);
-    plugin.deactivate?.(app);
+    plugin.deactivate(app);
+  });
+
+  it("cleans up partial activation and closes an open that completes after disposal", async () => {
+    const dispose = vi.fn();
+    const app: GeoLibreAppAPI = {
+      addGeoJsonLayer: vi.fn(), registerRightPanel: () => dispose,
+      registerToolbarMenu: () => { throw new Error("host registration failed"); },
+    };
+    expect(() => plugin.activate(app)).toThrow("host registration failed");
+    expect(dispose).toHaveBeenCalled();
+    expect(window.geolibreSpatialite).toBeUndefined();
+    const controller = new SpatialiteController(app);
+    const pending = controller.openDatabaseFromBuffer(new Uint8Array());
+    controller.dispose();
+    await pending;
+    expect(controller.getDatabase()).toBeNull();
   });
 });
+
 
