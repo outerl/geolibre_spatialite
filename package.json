@@ -17,13 +17,15 @@
     "build:geolibre": "vite build --config vite.geolibre.config.ts --configLoader runner",
     "build:library": "vite build --configLoader runner",
     "build:types": "tsc -p tsconfig.build.json",
-    "check": "npm run lint && npm run typecheck && npm test && npm run build",
+    "check": "npm run lint && npm run typecheck && npm test && npm run test:scripts && npm run build",
     "lint": "eslint . --max-warnings 0",
     "package:geolibre": "npm run build:geolibre && node scripts/package-geolibre-plugin.mjs",
     "test:package": "node scripts/test-geolibre-package.mjs",
     "serve:geolibre": "node scripts/serve-geolibre-plugin.mjs",
     "test": "vitest run --coverage --configLoader runner",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:scripts": "node --test scripts/*.test.mjs",
+    "benchmark": "node --expose-gc --max-old-space-size=4096 scripts/benchmark.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -45,6 +47,6 @@
     "sql.js": "^1.14.0"
   },
   "engines": {
-    "node": ">=22"
+    "node": "^22.13.0 || >=24.0.0"
   }
 }

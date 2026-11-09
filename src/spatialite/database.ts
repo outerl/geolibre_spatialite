@@ -23,6 +23,18 @@ export interface GeoJsonReadOptions {
   onProgress?: (features: number) => void;
 }
 
+function yieldToBrowser(): Promise<void> {
+  const scheduler = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
+  if (scheduler?.yield) return scheduler.yield();
+  // MessageChannel avoids timer clamping (especially costly on Windows).
+  if (typeof MessageChannel !== "undefined") return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => { channel.port1.close(); channel.port2.close(); resolve(); };
+    channel.port2.postMessage(null);
+  });
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 export class SpatialiteDatabase {
   private db: Database | null;
   private schemaVersion = -1;
@@ -258,7 +270,7 @@ export class SpatialiteDatabase {
       features.push(feature);
       if (features.length % 256 === 0 && performance.now() >= deadline) {
         options.onProgress?.(features.length);
-        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        await yieldToBrowser();
         options.signal?.throwIfAborted();
         deadline = performance.now() + 16;
       }
