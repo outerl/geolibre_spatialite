@@ -2,6 +2,13 @@
 // Copyright (c) 2026 Outer Loop Consulting
 
 export * from "./spatialite/blob-codec.js";
+export {
+  NativeCDatabase,
+  NativeCStatement,
+  type IDatabaseBackend,
+  type IStatementBackend,
+  type SpatialiteWasmModule,
+} from "./spatialite/c-wasm-adapter.js";
 export * from "./spatialite/geodesic.js";
 export * from "./spatialite/spatial-functions.js";
 export * from "./spatialite/spatial-index.js";

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // Copyright (c) 2026 Outer Loop Consulting
 
-import type { Database, Statement } from "sql.js";
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import proj4 from "proj4";
 
 import { decodeSpatialiteGeometry } from "./blob-codec.js";
 import { ensureSpatialIndexView, quoteIdentifier } from "./spatial-index.js";
 import { createSpatialiteDatabase } from "./sqlite-engine.js";
+import type { IDatabaseBackend, IStatementBackend } from "./c-wasm-adapter.js";
 
 export interface GeometryColumnInfo {
   tableName: string;
@@ -17,7 +17,7 @@ export interface GeometryColumnInfo {
   srid: number;
   spatialIndexEnabled: boolean;
 }
-export type SqlValue = number | string | Uint8Array | null;
+export type SqlValue = number | string | Uint8Array | null | bigint;
 export type SqlRow = Record<string, SqlValue>;
 export interface GeoJsonReadOptions {
   /** Omit for all attributes; [] loads geometry only. */
@@ -39,7 +39,7 @@ function yieldToBrowser(): Promise<void> {
 }
 
 export class SpatialiteDatabase {
-  private db: Database | null;
+  private db: IDatabaseBackend | null;
   private schemaVersion = -1;
   private tableNames: string[] | null = null;
   private geometryColumns: GeometryColumnInfo[] | null = null;
@@ -47,15 +47,31 @@ export class SpatialiteDatabase {
   private activeReaders = 0;
   private readonly projections = new Map<number, proj4.Converter>();
 
-  constructor(db: Database) { this.db = db; }
+  constructor(db: IDatabaseBackend) { this.db = db; }
 
   static async open(data?: Uint8Array | ArrayBuffer): Promise<SpatialiteDatabase> {
     return new SpatialiteDatabase(await createSpatialiteDatabase(data));
   }
 
-  get rawDb(): Database {
+  get rawDb(): IDatabaseBackend {
     if (!this.db) throw new Error("Database is closed.");
     return this.db;
+  }
+
+  get isNativeC(): boolean {
+    return this.rawDb.isNativeC;
+  }
+
+  getSpatialiteVersion(): string {
+    return this.rawDb.getSpatialiteVersion ? this.rawDb.getSpatialiteVersion() : "unknown";
+  }
+
+  hasGeos(): boolean {
+    return this.rawDb.hasGeos ? this.rawDb.hasGeos() : false;
+  }
+
+  hasProj(): boolean {
+    return this.rawDb.hasProj ? this.rawDb.hasProj() : false;
   }
 
   private assertIdle(): void {
@@ -89,7 +105,7 @@ export class SpatialiteDatabase {
   query<T = SqlRow>(sql: string, params: SqlValue[] = [], maxRows?: number): T[] {
     this.assertIdle();
     if (maxRows !== undefined && (!Number.isSafeInteger(maxRows) || maxRows < 0)) throw new Error("Invalid row limit.");
-    let stmt: Statement | null = null;
+    let stmt: IStatementBackend | null = null;
     try {
       stmt = this.rawDb.prepare(sql);
       if (params.length) stmt.bind(params);

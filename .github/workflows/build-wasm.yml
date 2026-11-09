@@ -1,0 +1,67 @@
+# SPDX-License-Identifier: LGPL-2.1-or-later
+# Copyright (c) 2026 Outer Loop Consulting
+
+name: Build Native C SpatiaLite WebAssembly
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - pedro/initial_development
+    paths:
+      - 'build-wasm/**'
+      - '.github/workflows/build-wasm.yml'
+    tags:
+      - 'v*'
+
+jobs:
+  build-c-wasm:
+    name: Compile Upstream C SpatiaLite (GEOS, PROJ, SQLite) to WASM
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build WebAssembly Module via Emscripten in Docker
+        run: |
+          docker build \
+            --target artifacts \
+            --output type=local,dest=src/wasm \
+            -f build-wasm/Dockerfile .
+
+      - name: Verify WebAssembly Artifacts
+        run: |
+          ls -lh src/wasm/
+          test -s src/wasm/spatialite.js
+          test -s src/wasm/spatialite.wasm
+          echo "WebAssembly binary size: $(wc -c < src/wasm/spatialite.wasm) bytes"
+
+      - name: Node.js Smoke Test of Native C Engine
+        run: |
+          node --input-type=module -e '
+            import createModule from "./src/wasm/spatialite.js";
+            const Module = await createModule();
+            const versionPtr = Module.ccall("spatialite_wasm_version", "string", [], []);
+            console.log("Upstream SpatiaLite Version:", versionPtr);
+            if (!versionPtr || !versionPtr.startsWith("5.")) {
+              throw new Error("Invalid SpatiaLite version: " + versionPtr);
+            }
+            const hasGeos = Module.ccall("spatialite_wasm_has_geos", "number", [], []);
+            console.log("GEOS Enabled:", hasGeos === 1);
+            const hasProj = Module.ccall("spatialite_wasm_has_proj", "number", [], []);
+            console.log("PROJ Enabled:", hasProj === 1);
+          '
+
+      - name: Upload Native WebAssembly Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: spatialite-c-wasm-binaries
+          path: |
+            src/wasm/spatialite.js
+            src/wasm/spatialite.wasm
+          retention-days: 30

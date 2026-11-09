@@ -7,8 +7,11 @@ export type DatabaseScalar = SqlValue;
 export type DatabaseRow = SqlRow;
 export type ISpatialiteConnection = Pick<SpatialiteDatabase,
   "exec" | "query" | "transaction" | "getTableNames" | "getGeometryColumns" |
-  "getTableGeoJson" | "getTableGeoJsonAsync" | "export" | "close"
+  "getTableGeoJson" | "getTableGeoJsonAsync" | "export" | "close" | "isNativeC" |
+  "getSpatialiteVersion" | "hasGeos" | "hasProj"
 >;
+
+export type SpatialiteEngineType = "native-c-wasm" | "inlined-sqlite-wasm";
 
 export interface GeometryColumnMetadata {
   tableName: string;
@@ -22,8 +25,11 @@ export interface GeometryColumnMetadata {
 export interface GeoLibreSpatialiteService {
   readonly version: string;
   isReady(): boolean;
+  getEngineType(): SpatialiteEngineType;
+  getSpatialiteVersion(): string;
   openDatabase(data?: Uint8Array | ArrayBuffer): Promise<ISpatialiteConnection>;
   createDatabase(): Promise<ISpatialiteConnection>;
+  registerNativeSpatialiteFactory?(factory: () => Promise<unknown>): void;
 }
 
 declare global {

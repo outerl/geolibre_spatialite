@@ -119,9 +119,10 @@ export class SpatialiteController {
     // Header
     const header = document.createElement("div");
     header.className = "spatialite-header";
+    const engineLabel = this.db?.isNativeC ? `Native C WASM (v${this.db.getSpatialiteVersion()})` : "Spatial SQL Engine";
     header.innerHTML = `
       <h3 class="spatialite-title">SpatiaLite</h3>
-      <p class="spatialite-subtitle">Spatial SQL Database Engine</p>
+      <p class="spatialite-subtitle">${engineLabel}</p>
     `;
     panel.appendChild(header);
 
@@ -140,7 +141,8 @@ export class SpatialiteController {
     if (this.db) {
       const statusAlert = document.createElement("div");
       statusAlert.className = "spatialite-alert spatialite-alert-info";
-      statusAlert.textContent = `Connected: ${this.currentDbName}`;
+      const engineInfo = this.db.isNativeC ? ` (C WASM v${this.db.getSpatialiteVersion()})` : "";
+      statusAlert.textContent = `Connected: ${this.currentDbName}${engineInfo}`;
       dbSection.appendChild(statusAlert);
     }
     panel.appendChild(dbSection);

@@ -40,7 +40,7 @@ for (const [name, license] of [["sql.js", "LICENSE"], ["proj4", "LICENSE.md"], [
 const dependencyPath = join(distDir, "DEPENDENCIES.json");
 await writeFile(dependencyPath, JSON.stringify(dependencies, null, 2) + "\n");
 entries.push(["DEPENDENCIES.json", dependencyPath]);
-for (const directory of ["src", "build", "scripts", "tests", "docs", "geolibre-plugin"]) {
+for (const directory of ["src", "build", "build-wasm", "scripts", "tests", "docs", "geolibre-plugin"]) {
   await addSources(directory);
 }
 for (const name of ["package.json", "package-lock.json", "tsconfig.json", "tsconfig.build.json", "vite.config.ts", "vite.geolibre.config.ts", "vitest.config.ts", "eslint.config.js", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md"]) {
