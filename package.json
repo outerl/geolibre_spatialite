@@ -5,6 +5,12 @@
   "description": "SpatiaLite database engine and Spatial SQL support for GeoLibre",
   "type": "module",
   "license": "LGPL-2.1-or-later",
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md",
+    "THIRD_PARTY_NOTICES.md"
+  ],
   "types": "./dist/types/index.d.ts",
   "exports": {
     ".": {
