@@ -95,6 +95,8 @@ jobs:
     name: Package & Verify (${{ matrix.os }})
     needs: test
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
@@ -132,7 +134,7 @@ jobs:
         run: npm run test:native:browser -- --package
 
       - name: Upload plugin archive and checksum artifact
-        if: matrix.os == 'ubuntu-latest' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: matrix.os == 'ubuntu-latest' && github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         uses: actions/upload-artifact@v4
         with:
           name: geolibre-spatialite-${{ github.sha }}
@@ -142,10 +144,19 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Publish GitHub Release
+        if: matrix.os == 'ubuntu-latest' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            geolibre-plugin/dist/*.zip
+            geolibre-plugin/dist/*.zip.sha256.json
+          generate_release_notes: true
+
   notify-site:
     name: Request central site deployment
     needs: package
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.package.result == 'success'
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) && needs.package.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -160,7 +171,7 @@ jobs:
             if (!process.env.GEO_SITE_DISPATCH_TOKEN) {
               const message = 'GEO_SITE_DISPATCH_TOKEN is not configured. The plugin archive was built, but no central site deployment was requested.';
               core.warning(message);
-              await core.summary.addHeading('Central site deployment not requested').addText(message).write();
+              await core.summary.addHeading('Central site deployment not requested', 2).addRaw(message, true).write();
               return;
             }
 
@@ -175,5 +186,6 @@ jobs:
             });
 
             await core.summary
-              .addHeading('Central site deployment requested')
-              .addText(`Dispatched ${context.repo.owner}/${context.repo.repo} at ${context.sha} to outerl/geolibre_site.`);
+              .addHeading('Central site deployment requested', 2)
+              .addRaw(`Dispatched ${context.repo.owner}/${context.repo.repo} at ${context.sha} to outerl/geolibre_site.`, true)
+              .write();
