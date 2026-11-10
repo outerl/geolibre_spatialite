@@ -50,7 +50,7 @@ CI starts with a dedicated **Lint** job. It must pass before native compilation,
 
 ## Install
 
-In GeoLibre's plugin manager, choose `geolibre-plugin/dist/geolibre-spatialite-0.1.0.zip`, then enable the plugin. The host must support right panels, toolbar menus, and GeoJSON layers. The ZIP includes runtime code, styles, licenses, build inputs, and corresponding upstream source archives.
+In GeoLibre's plugin manager, choose `geolibre-plugin/dist/geolibre-spatialite-0.1.1.zip`, then enable the plugin. The host must support right panels, toolbar menus, and GeoJSON layers. The ZIP includes runtime code, styles, licenses, build inputs, and corresponding upstream source archives.
 
 `npm run serve:geolibre` serves an already built plugin at `http://127.0.0.1:4174/plugin.json`.
 

@@ -6,6 +6,7 @@ import sqlWasmBase64 from "virtual:sql-wasm-base64";
 import bundledNativeFactory from "virtual:spatialite-native";
 
 import { registerSpatialFunctions } from "./spatial-functions.js";
+import { PLUGIN_VERSION } from "../version.js";
 import {
   type IDatabaseBackend,
   type IStatementBackend,
@@ -132,7 +133,7 @@ function wrapSqlJsDatabase(db: Database): IDatabaseBackend {
       db.close();
     },
     getSpatialiteVersion(): string {
-      return "0.1.0 (inlined)";
+      return `${PLUGIN_VERSION} (inlined)`;
     },
     hasGeos(): boolean {
       return false;

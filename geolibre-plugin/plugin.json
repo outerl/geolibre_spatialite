@@ -1,7 +1,7 @@
 {
   "id": "geolibre-spatialite",
   "name": "SpatiaLite Spatial SQL Engine",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "entry": "dist/index.js",
   "style": "dist/style.css",
   "description": "Open and map SpatiaLite databases with offline SQLite and a documented subset of spatial SQL functions.",
