@@ -1,12 +1,13 @@
 {
   "id": "geolibre-spatialite",
   "name": "SpatiaLite Spatial SQL Engine",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "entry": "dist/index.js",
   "style": "dist/style.css",
   "description": "Open and map SpatiaLite databases with offline SQLite and a documented subset of spatial SQL functions.",
+  "homepage": "https://outerloop.io",
+  "author": "Outer Loop Consulting",
   "geolibre": ">=0.2.0",
   "capabilities": ["right-panel", "native-layers", "map-access"],
-  "author": { "name": "Outer Loop Consulting", "url": "https://outerloop.io" },
   "license": "LGPL-2.1-or-later"
 }
